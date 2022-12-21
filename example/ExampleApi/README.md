@@ -5,6 +5,7 @@ This example project shows how you can configure an ASP.NET API using a JSON fil
 ## Quick Start
 
 - Get the latest version of Azurite
-- Go to /example/Azurite
-- Run azurite
-- Start the project
+- Run Azurite
+- Create a new container named `configuration`
+- Add the files of /example/Settings in the same structure to this container
+- Run the ExampleApi
