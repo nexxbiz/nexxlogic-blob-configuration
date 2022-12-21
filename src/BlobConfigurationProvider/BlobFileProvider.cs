@@ -80,6 +80,14 @@ public class BlobFileProvider : IFileProvider
             {
                 break;
             }
+            catch
+            {
+                // If an exception is not caught, then it will stop the watch loop. This will retry at the next interval.
+                // Additional error handling can be implemented in the future, like:
+                // - Max retries
+                // - Exponential backoff
+                // - Logging
+            }
         }
     }
 
