@@ -8,5 +8,9 @@ public class BlobConfigurationOptions
 
     public bool Optional { get; set; }
     public bool ReloadOnChange { get; set; }
-    public int ReloadInterval { get; set; } = 30000;
+
+    /// <summary>
+    /// Reload interval in milliseconds
+    /// </summary>
+    public int ReloadInterval { get; set; } = 30_000;
 }
