@@ -1,8 +1,6 @@
-﻿using FluentValidation;
-using FluentValidation.TestHelper;
-using Microsoft.Extensions.Configuration;
+﻿using FluentValidation.TestHelper;
 
-namespace BlobConfigurationProvider.Tests;
+namespace BlobConfigurationProvider.Tests.Options;
 
 public class BlobConfigurationOptionsValidatorTests
 {

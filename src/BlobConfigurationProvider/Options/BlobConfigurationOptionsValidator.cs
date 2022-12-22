@@ -1,6 +1,6 @@
 ﻿using FluentValidation;
 
-namespace BlobConfigurationProvider;
+namespace BlobConfigurationProvider.Options;
 
 internal class BlobConfigurationOptionsValidator : AbstractValidator<BlobConfigurationOptions>
 {

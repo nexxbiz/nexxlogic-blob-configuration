@@ -1,7 +1,9 @@
-﻿using FluentValidation;
-using Microsoft.Extensions.Configuration;
+﻿using BlobConfigurationProvider.Factories;
+using BlobConfigurationProvider.FileProvider;
+using BlobConfigurationProvider.Options;
+using FluentValidation;
 
-namespace BlobConfigurationProvider;
+namespace Microsoft.Extensions.Configuration;
 
 public static class ConfigurationBuilderExtensions
 {

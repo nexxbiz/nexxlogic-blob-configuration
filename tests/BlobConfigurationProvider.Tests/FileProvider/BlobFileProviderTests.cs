@@ -1,10 +1,9 @@
 ﻿using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
-using Microsoft.Extensions.Primitives;
 using System.Net;
 
-namespace BlobConfigurationProvider.Tests;
+namespace BlobConfigurationProvider.Tests.FileProvider;
 
 public class BlobFileProviderTests
 {

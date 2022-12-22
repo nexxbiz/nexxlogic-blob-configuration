@@ -3,7 +3,7 @@ using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Microsoft.Extensions.FileProviders;
 
-namespace BlobConfigurationProvider;
+namespace BlobConfigurationProvider.FileProvider;
 
 public class BlobFileInfo : IFileInfo
 {

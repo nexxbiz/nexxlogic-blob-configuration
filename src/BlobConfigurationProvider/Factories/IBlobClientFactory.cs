@@ -1,6 +1,6 @@
 ﻿using Azure.Storage.Blobs;
 
-namespace BlobConfigurationProvider;
+namespace BlobConfigurationProvider.Factories;
 
 public interface IBlobClientFactory
 {

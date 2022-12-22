@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Primitives;
 
-namespace BlobConfigurationProvider;
+namespace BlobConfigurationProvider.FileProvider;
 
 internal class BlobChangeToken : IChangeToken
 {

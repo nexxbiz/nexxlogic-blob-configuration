@@ -1,8 +1,11 @@
 ﻿using Azure.Storage.Blobs;
+using BlobConfigurationProvider.Factories;
+using BlobConfigurationProvider.Options;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Primitives;
 
-namespace BlobConfigurationProvider;
+namespace BlobConfigurationProvider.FileProvider;
+
 public class BlobFileProvider : IFileProvider
 {
     private readonly IBlobClientFactory _blobClientFactory;

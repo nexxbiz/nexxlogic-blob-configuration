@@ -1,4 +1,4 @@
-﻿namespace BlobConfigurationProvider.Tests;
+﻿namespace BlobConfigurationProvider.Tests.Factories;
 
 public class BlobClientFactoryTests
 {

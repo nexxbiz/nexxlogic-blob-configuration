@@ -1,4 +1,4 @@
-﻿namespace BlobConfigurationProvider;
+﻿namespace BlobConfigurationProvider.Options;
 
 public class BlobConfigurationOptions
 {

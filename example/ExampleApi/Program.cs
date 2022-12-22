@@ -1,4 +1,3 @@
-using BlobConfigurationProvider;
 using ExampleApi;
 using Microsoft.Extensions.Options;
 

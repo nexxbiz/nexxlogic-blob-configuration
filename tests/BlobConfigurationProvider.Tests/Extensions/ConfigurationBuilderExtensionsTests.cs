@@ -2,7 +2,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.Json;
 
-namespace BlobConfigurationProvider.Tests;
+namespace BlobConfigurationProvider.Tests.Extensions;
 
 public class ConfigurationBuilderExtensionsTests
 {
