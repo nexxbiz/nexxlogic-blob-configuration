@@ -1,10 +1,11 @@
 ﻿using Azure.Storage.Blobs;
-using BlobConfigurationProvider.Factories;
-using BlobConfigurationProvider.Options;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Primitives;
+using NexxLogic.BlobConfiguration.AspNetCore.Factories;
+using NexxLogic.BlobConfiguration.AspNetCore.Options;
 
-namespace BlobConfigurationProvider.FileProvider;
+namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 
 public class BlobFileProvider : IFileProvider
 {

@@ -1,9 +1,10 @@
-﻿using BlobConfigurationProvider.Factories;
-using BlobConfigurationProvider.FileProvider;
-using BlobConfigurationProvider.Options;
-using FluentValidation;
+﻿using FluentValidation;
+using Microsoft.Extensions.Configuration;
+using NexxLogic.BlobConfiguration.AspNetCore.Factories;
+using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
+using NexxLogic.BlobConfiguration.AspNetCore.Options;
 
-namespace Microsoft.Extensions.Configuration;
+namespace NexxLogic.BlobConfiguration.AspNetCore.Extensions;
 
 public static class ConfigurationBuilderExtensions
 {

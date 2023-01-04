@@ -7,12 +7,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="7.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="7.0.1" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\BlobConfigurationProvider\BlobConfigurationProvider.csproj" />
+    <ProjectReference Include="..\..\src\NexxLogic.BlobConfiguration.AspNetCore\NexxLogic.BlobConfiguration.AspNetCore.csproj" />
   </ItemGroup>
 
 </Project>

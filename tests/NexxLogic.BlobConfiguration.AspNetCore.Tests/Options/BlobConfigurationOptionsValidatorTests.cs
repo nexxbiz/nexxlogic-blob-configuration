@@ -1,6 +1,7 @@
 ﻿using FluentValidation.TestHelper;
+using NexxLogic.BlobConfiguration.AspNetCore.Options;
 
-namespace BlobConfigurationProvider.Tests.Options;
+namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.Options;
 
 public class BlobConfigurationOptionsValidatorTests
 {

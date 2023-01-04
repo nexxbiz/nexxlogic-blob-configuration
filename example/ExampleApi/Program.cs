@@ -1,5 +1,6 @@
 using ExampleApi;
 using Microsoft.Extensions.Options;
+using NexxLogic.BlobConfiguration.AspNetCore.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 

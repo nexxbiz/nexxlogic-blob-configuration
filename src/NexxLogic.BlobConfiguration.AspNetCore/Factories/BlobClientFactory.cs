@@ -1,7 +1,7 @@
 ﻿using Azure.Storage.Blobs;
-using BlobConfigurationProvider.Options;
+using NexxLogic.BlobConfiguration.AspNetCore.Options;
 
-namespace BlobConfigurationProvider.Factories;
+namespace NexxLogic.BlobConfiguration.AspNetCore.Factories;
 
 public class BlobClientFactory : IBlobClientFactory
 {

@@ -1,11 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net7.0</TargetFramework>
+    <TargetFrameworks>net6.0;net7.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-
     <IsPackable>false</IsPackable>
+    <RootNamespace>NexxLogic.BlobConfiguration.AspNetCore.Tests</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\BlobConfigurationProvider\BlobConfigurationProvider.csproj" />
+    <ProjectReference Include="..\..\src\NexxLogic.BlobConfiguration.AspNetCore\NexxLogic.BlobConfiguration.AspNetCore.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,4 +1,4 @@
-﻿namespace BlobConfigurationProvider.Options;
+﻿namespace NexxLogic.BlobConfiguration.AspNetCore.Options;
 
 public class BlobConfigurationOptions
 {

@@ -1,6 +1,6 @@
 ﻿using FluentValidation;
 
-namespace BlobConfigurationProvider.Options;
+namespace NexxLogic.BlobConfiguration.AspNetCore.Options;
 
 internal class BlobConfigurationOptionsValidator : AbstractValidator<BlobConfigurationOptions>
 {

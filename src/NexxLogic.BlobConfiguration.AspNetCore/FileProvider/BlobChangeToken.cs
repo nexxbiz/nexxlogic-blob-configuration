@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Primitives;
 
-namespace BlobConfigurationProvider.FileProvider;
+namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 
 internal class BlobChangeToken : IChangeToken
 {

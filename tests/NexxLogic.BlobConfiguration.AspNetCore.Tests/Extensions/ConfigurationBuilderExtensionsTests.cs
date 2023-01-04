@@ -1,10 +1,11 @@
 ﻿using FluentValidation;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.Json;
+using NexxLogic.BlobConfiguration.AspNetCore.Extensions;
 
-namespace BlobConfigurationProvider.Tests.Extensions;
+namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.Extensions;
 
-public class ConfigurationBuilderExtensionsTests
+public class BlobConfigurationBuilderExtensionsTests
 {
     [Fact]
     public void AddJsonBlob_ShouldThrowValidationException_WhenBlobConfigurationOptionsIsNotValid()

@@ -1,4 +1,7 @@
-﻿namespace BlobConfigurationProvider.Tests.Factories;
+﻿using NexxLogic.BlobConfiguration.AspNetCore.Factories;
+using NexxLogic.BlobConfiguration.AspNetCore.Options;
+
+namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.Factories;
 
 public class BlobClientFactoryTests
 {

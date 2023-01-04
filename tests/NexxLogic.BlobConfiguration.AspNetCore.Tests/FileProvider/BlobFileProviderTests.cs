@@ -1,9 +1,12 @@
-﻿using Azure;
+﻿using System.Net;
+using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
-using System.Net;
+using NexxLogic.BlobConfiguration.AspNetCore.Factories;
+using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
+using NexxLogic.BlobConfiguration.AspNetCore.Options;
 
-namespace BlobConfigurationProvider.Tests.FileProvider;
+namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.FileProvider;
 
 public class BlobFileProviderTests
 {
