@@ -2,6 +2,7 @@
 using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
+using Moq;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
@@ -14,10 +15,13 @@ public class BlobFileProviderTests
 
     private readonly Mock<BlobClient> _blobClientMock = new();
 
+    private readonly Mock<BlobContainerClient> _blobContainerClientMock = new();
+
+
     private readonly BlobConfigurationOptions _blobConfig;
     private const string BLOB_NAME = "settings.json";
     private const int DEFAULT_CONTENT_LENGTH = 123;
-    private readonly DateTimeOffset _defaultLastModified = new DateTimeOffset(2022, 12, 19, 1, 1, 1, default);
+    private readonly DateTimeOffset _defaultLastModified = new(2022, 12, 19, 1, 1, 1, default);
 
     public BlobFileProviderTests()
     {
@@ -34,11 +38,16 @@ public class BlobFileProviderTests
             .Setup(_ => _.GetBlobClient(BLOB_NAME))
             .Returns(_blobClientMock.Object);
 
+        var blobContainerClientFactoryMock = new Mock<IBlobContainerClientFactory>();
+        blobContainerClientFactoryMock
+            .Setup(_ => _.GetBlobContainerClient(""))
+            .Returns(_blobContainerClientMock.Object);
+
         _blobConfig = new BlobConfigurationOptions
         {
             ReloadInterval = 1
         };
-        _sut = new BlobFileProvider(blobClientFactoryMock.Object, _blobConfig);
+        _sut = new BlobFileProvider(blobClientFactoryMock.Object, blobContainerClientFactoryMock.Object, _blobConfig);
     }
 
     [Fact]
@@ -154,13 +163,4 @@ public class BlobFileProviderTests
             .Verify(_ => _.GetPropertiesAsync(null, changeToken.CancellationToken), Times.Never);
     }
 
-    [Fact]
-    public void GetDirectoryCoontents_ShouldThrow()
-    {
-        // Act
-        var method = () => _sut.GetDirectoryContents(BLOB_NAME);
-
-        // Assert
-        method.Should().Throw<NotImplementedException>();
-    }
 }

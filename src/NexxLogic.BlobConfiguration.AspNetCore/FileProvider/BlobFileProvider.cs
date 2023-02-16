@@ -1,5 +1,4 @@
 ﻿using Azure.Storage.Blobs;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Primitives;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
@@ -10,6 +9,7 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 public class BlobFileProvider : IFileProvider
 {
     private readonly IBlobClientFactory _blobClientFactory;
+    private readonly IBlobContainerClientFactory _blobContainerClientFactory;
     private readonly BlobConfigurationOptions _blobConfig;
 
     private BlobChangeToken _changeToken = new();
@@ -28,21 +28,12 @@ public class BlobFileProvider : IFileProvider
     /// </summary>
     private bool _exists;
 
-    public BlobFileProvider(IBlobClientFactory blobClientFactory, BlobConfigurationOptions blobConfig)
+    public BlobFileProvider(IBlobClientFactory blobClientFactory, IBlobContainerClientFactory blobContainerClientFactory, BlobConfigurationOptions blobConfig)
     {
         _blobClientFactory = blobClientFactory;
         _blobConfig = blobConfig;
+        _blobContainerClientFactory= blobContainerClientFactory;
     }
-
-    /// <summary>
-    /// <inheritdoc/>
-    /// <para><see cref="ConfigurationProvider"/> does not call this method.</para>
-    /// </summary>
-    /// <param name="subpath"><inheritdoc/></param>
-    /// <returns></returns>
-    /// <exception cref="NotImplementedException"></exception>
-    public IDirectoryContents GetDirectoryContents(string subpath)
-        => throw new NotImplementedException();
 
     public IFileInfo GetFileInfo(string subpath)
     {
@@ -54,6 +45,29 @@ public class BlobFileProvider : IFileProvider
         _exists = result.Exists;
 
         return result;
+    }
+
+    public IDirectoryContents GetDirectoryContents(string subpath) {
+
+        var containerClient = _blobContainerClientFactory.GetBlobContainerClient("");
+        var fileInfos = new List<IFileInfo>();
+
+        foreach (var blobInfoPage in containerClient.GetBlobs().AsPages())
+        {
+            foreach (var blobInfo in blobInfoPage.Values)
+            {
+                var blobClient = _blobClientFactory.GetBlobClient(blobInfo.Name);
+                var blob = new BlobFileInfo(blobClient);
+                _lastModified = Math.Max(blob.LastModified.Ticks, _lastModified);
+                fileInfos.Add(blob);
+            }
+        }
+        _loadPending = false;
+        _exists = containerClient.Exists();
+
+        var blobDirectoryContents = new BlobDirectoryContents(containerClient.Exists(), fileInfos);
+
+        return blobDirectoryContents;
     }
 
     public IChangeToken Watch(string filter)

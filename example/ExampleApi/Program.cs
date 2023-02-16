@@ -19,7 +19,7 @@ builder.Configuration.AddJsonBlob(config =>
     builder.Configuration.GetSection("BlobConfiguration").Bind(config);
     config.BlobName = "Folder/settings.json";
 });
-builder.Services.Configure<ExampleOptions>(builder.Configuration.GetSection("ExampleSettings"));
+builder.Services.Configure<ExampleOptions>(builder.Configuration.GetSection("WorkflowDefinitions"));
 
 var app = builder.Build();
 
