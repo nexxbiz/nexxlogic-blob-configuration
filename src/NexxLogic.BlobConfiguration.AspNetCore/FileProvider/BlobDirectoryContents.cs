@@ -1,5 +1,4 @@
-﻿using Azure.Storage.Blobs;
-using Microsoft.Extensions.FileProviders;
+﻿using Microsoft.Extensions.FileProviders;
 using System.Collections;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
@@ -17,11 +16,9 @@ public class BlobDirectoryContents : IDirectoryContents
 
     public bool Exists => exists;
 
-
-
     public IEnumerator<IFileInfo> GetEnumerator()
     {
-        return fileInfos.GetEnumerator(); 
+        return fileInfos.GetEnumerator();
     }
 
     IEnumerator IEnumerable.GetEnumerator()

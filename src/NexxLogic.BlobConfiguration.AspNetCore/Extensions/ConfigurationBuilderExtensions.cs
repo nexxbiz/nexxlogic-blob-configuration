@@ -16,7 +16,7 @@ public static class ConfigurationBuilderExtensions
 
         return builder.AddJsonFile(source =>
         {
-            source.FileProvider = new BlobFileProvider(new BlobClientFactory(options), 
+            source.FileProvider = new BlobFileProvider(new BlobClientFactory(options),
                 new BlobContainerClientFactory(options), options);
             source.Optional = options.Optional;
             source.ReloadOnChange = options.ReloadOnChange;
@@ -24,7 +24,7 @@ public static class ConfigurationBuilderExtensions
         });
     }
 
-    public static IConfigurationBuilder AddAllJsonBlobsInContainer(this IConfigurationBuilder builder, 
+    public static IConfigurationBuilder AddAllJsonBlobsInContainer(this IConfigurationBuilder builder,
         Action<BlobConfigurationOptions> configure)
     {
         var options = new BlobConfigurationOptions();
@@ -47,7 +47,7 @@ public static class ConfigurationBuilderExtensions
                     ReloadOnChange = options.ReloadOnChange,
                 };
 
-                source.FileProvider = new BlobFileProvider(new BlobClientFactory(blobOptionsConfiguration), 
+                source.FileProvider = new BlobFileProvider(new BlobClientFactory(blobOptionsConfiguration),
                     blobContainerClientfactory, blobOptionsConfiguration);
                 source.Optional = blobOptionsConfiguration.Optional;
                 source.ReloadOnChange = blobOptionsConfiguration.ReloadOnChange;

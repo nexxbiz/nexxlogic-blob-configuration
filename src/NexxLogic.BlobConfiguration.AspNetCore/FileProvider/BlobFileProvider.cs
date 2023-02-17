@@ -32,7 +32,7 @@ public class BlobFileProvider : IFileProvider
     {
         _blobClientFactory = blobClientFactory;
         _blobConfig = blobConfig;
-        _blobContainerClientFactory= blobContainerClientFactory;
+        _blobContainerClientFactory = blobContainerClientFactory;
     }
 
     public IFileInfo GetFileInfo(string subpath)
@@ -47,8 +47,8 @@ public class BlobFileProvider : IFileProvider
         return result;
     }
 
-    public IDirectoryContents GetDirectoryContents(string subpath) {
-
+    public IDirectoryContents GetDirectoryContents(string subpath)
+    {
         var containerClient = _blobContainerClientFactory.GetBlobContainerClient("");
         var fileInfos = new List<IFileInfo>();
 
