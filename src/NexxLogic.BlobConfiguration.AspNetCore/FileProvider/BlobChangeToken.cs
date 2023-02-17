@@ -4,7 +4,7 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 
 internal class BlobChangeToken : IChangeToken
 {
-    private CancellationTokenSource _cts = new CancellationTokenSource();
+    private CancellationTokenSource _cts = new();
 
     public bool ActiveChangeCallbacks => true;
     public bool HasChanged => _cts.IsCancellationRequested;
