@@ -1,5 +1,6 @@
 ﻿using Azure.Storage.Blobs;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
@@ -11,6 +12,7 @@ public class BlobFileProvider : IFileProvider
     private readonly IBlobClientFactory _blobClientFactory;
     private readonly IBlobContainerClientFactory _blobContainerClientFactory;
     private readonly BlobConfigurationOptions _blobConfig;
+    private readonly ILogger<BlobFileProvider> _logger;
 
     private BlobChangeToken _changeToken = new();
     /// <summary>
@@ -28,11 +30,15 @@ public class BlobFileProvider : IFileProvider
     /// </summary>
     private bool _exists;
 
-    public BlobFileProvider(IBlobClientFactory blobClientFactory, IBlobContainerClientFactory blobContainerClientFactory, BlobConfigurationOptions blobConfig)
+    public BlobFileProvider(IBlobClientFactory blobClientFactory,
+        IBlobContainerClientFactory blobContainerClientFactory,
+        BlobConfigurationOptions blobConfig,
+        ILogger<BlobFileProvider> logger)
     {
         _blobClientFactory = blobClientFactory;
         _blobConfig = blobConfig;
         _blobContainerClientFactory = blobContainerClientFactory;
+        _logger = logger;
     }
 
     public IFileInfo GetFileInfo(string subpath)
@@ -84,22 +90,35 @@ public class BlobFileProvider : IFileProvider
             try
             {
                 await Task.Delay(_blobConfig.ReloadInterval, token);
+                _logger.LogWarning("check change blob settings");
+
                 if (_loadPending)
+                {
+                    _logger.LogWarning("load pending");
                     continue;
+                }
 
                 if (!_exists)
+                {
+                    _logger.LogWarning("file does not exist");
                     break;
+                }
 
                 var properties = await blobClient.GetPropertiesAsync(cancellationToken: token);
                 if (properties.Value.LastModified.Ticks > _lastModified)
+                {
+                    _logger.LogWarning("change raised");
                     RaiseChanged();
+                }
             }
             catch (TaskCanceledException)
             {
+                _logger.LogWarning("task cancelled");
                 break;
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogWarning($"error occured {ex.Message}");
                 // If an exception is not caught, then it will stop the watch loop. This will retry at the next interval.
                 // Additional error handling can be implemented in the future, like:
                 // - Max retries
