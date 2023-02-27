@@ -2,6 +2,8 @@
 using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
@@ -47,7 +49,11 @@ public class BlobFileProviderTests
         {
             ReloadInterval = 1
         };
-        _sut = new BlobFileProvider(blobClientFactoryMock.Object, blobContainerClientFactoryMock.Object, _blobConfig);
+
+        var loggerFactory = new NullLoggerFactory();
+        var logger = loggerFactory.CreateLogger<BlobFileProvider>();
+
+        _sut = new BlobFileProvider(blobClientFactoryMock.Object, blobContainerClientFactoryMock.Object, _blobConfig, logger);
     }
 
     [Fact]
