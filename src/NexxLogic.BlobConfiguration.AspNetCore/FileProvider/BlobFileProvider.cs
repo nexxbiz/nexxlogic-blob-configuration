@@ -90,7 +90,7 @@ public class BlobFileProvider : IFileProvider
             try
             {
                 await Task.Delay(_blobConfig.ReloadInterval, token);
-                _logger.LogWarning("check change blob settings");
+                _logger.LogInformation("check change blob settings");
 
                 if (_loadPending)
                 {
@@ -118,7 +118,7 @@ public class BlobFileProvider : IFileProvider
             }
             catch (Exception ex)
             {
-                _logger.LogWarning($"error occured {ex.Message}");
+                _logger.LogError($"error occured {ex.Message}");
                 // If an exception is not caught, then it will stop the watch loop. This will retry at the next interval.
                 // Additional error handling can be implemented in the future, like:
                 // - Max retries
