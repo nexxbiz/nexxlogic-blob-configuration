@@ -42,7 +42,7 @@ public class BlobFileProviderTests
 
         var blobContainerClientFactoryMock = new Mock<IBlobContainerClientFactory>();
         blobContainerClientFactoryMock
-            .Setup(_ => _.GetBlobContainerClient(""))
+            .Setup(_ => _.GetBlobContainerClient())
             .Returns(_blobContainerClientMock.Object);
 
         _blobConfig = new BlobConfigurationOptions

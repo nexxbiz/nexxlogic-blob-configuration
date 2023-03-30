@@ -12,8 +12,13 @@ public class BlobContainerClientFactory : IBlobContainerClientFactory
         _blobConfig = blobConfig;
     }
 
-    public BlobContainerClient GetBlobContainerClient(string path)
+    public BlobContainerClient GetBlobContainerClient()
     {
+        if(!string.IsNullOrWhiteSpace(_blobConfig.BlobContainerUrl))
+        {
+            return new BlobContainerClient(new Uri(_blobConfig.BlobContainerUrl));
+        }
+
         var serviceClient = new BlobServiceClient(_blobConfig.ConnectionString);
         return serviceClient.GetBlobContainerClient(_blobConfig.ContainerName);
     }

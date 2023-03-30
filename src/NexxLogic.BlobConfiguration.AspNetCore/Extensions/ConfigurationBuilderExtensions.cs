@@ -15,7 +15,7 @@ public static class ConfigurationBuilderExtensions
     {
         var options = new BlobConfigurationOptions();
         configure?.Invoke(options);
-        new BlobConfigurationOptionsValidator().ValidateAndThrow(options);
+        new BlobConfigurationOptionsValidator(blobNameIsRequired: true).ValidateAndThrow(options);
 
         return builder.AddJsonFile(source =>
         {
@@ -33,6 +33,8 @@ public static class ConfigurationBuilderExtensions
     {
         var options = new BlobConfigurationOptions();
         configure?.Invoke(options);
+        new BlobConfigurationOptionsValidator(blobNameIsRequired: false).ValidateAndThrow(options);
+
         var blobClientfactory = new BlobClientFactory(options);
         var blobContainerClientfactory = new BlobContainerClientFactory(options);
 

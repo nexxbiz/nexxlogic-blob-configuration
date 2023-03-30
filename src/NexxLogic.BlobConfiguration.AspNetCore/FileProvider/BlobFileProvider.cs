@@ -55,10 +55,10 @@ public class BlobFileProvider : IFileProvider
 
     public IDirectoryContents GetDirectoryContents(string subpath)
     {
-        var containerClient = _blobContainerClientFactory.GetBlobContainerClient("");
+        var containerClient = _blobContainerClientFactory.GetBlobContainerClient();
         var fileInfos = new List<IFileInfo>();
 
-        foreach (var blobInfoPage in containerClient.GetBlobs().AsPages())
+        foreach (var blobInfoPage in containerClient.GetBlobs(prefix: _blobConfig.Prefix).AsPages())
         {
             foreach (var blobInfo in blobInfoPage.Values)
             {
