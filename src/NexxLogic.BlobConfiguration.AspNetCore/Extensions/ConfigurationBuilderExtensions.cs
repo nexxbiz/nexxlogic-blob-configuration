@@ -15,7 +15,7 @@ public static class ConfigurationBuilderExtensions
     {
         var options = new BlobConfigurationOptions();
         configure?.Invoke(options);
-        new BlobConfigurationOptionsValidator(blobNameIsRequired: true).ValidateAndThrow(options);
+        new RequiredBlobNameBlobConfigurationOptionsValidator().ValidateAndThrow(options);
         var blobContainerClientfactory = new BlobContainerClientFactory(options);
         var blobClientfactory = new BlobClientFactory(blobContainerClientfactory);
 
@@ -39,7 +39,7 @@ public static class ConfigurationBuilderExtensions
     {
         var options = new BlobConfigurationOptions();
         configure?.Invoke(options);
-        new BlobConfigurationOptionsValidator(blobNameIsRequired: false).ValidateAndThrow(options);
+        new BlobConfigurationOptionsValidator().ValidateAndThrow(options);
 
         var blobContainerClientfactory = new BlobContainerClientFactory(options);
         var blobClientfactory = new BlobClientFactory(blobContainerClientfactory);

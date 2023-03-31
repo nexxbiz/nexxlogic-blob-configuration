@@ -4,7 +4,7 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.Options;
 
 internal class BlobConfigurationOptionsValidator : AbstractValidator<BlobConfigurationOptions>
 {
-    public BlobConfigurationOptionsValidator(bool blobNameIsRequired)
+    public BlobConfigurationOptionsValidator()
     {
         RuleFor(options => options.ReloadInterval)
             .GreaterThanOrEqualTo(5000)
@@ -34,10 +34,5 @@ internal class BlobConfigurationOptionsValidator : AbstractValidator<BlobConfigu
 
 
         RuleFor(options => options.ContainerName).NotEmpty();
-
-        if (blobNameIsRequired)
-        {
-            RuleFor(options => options.BlobName).NotEmpty();
-        }
     }
 }

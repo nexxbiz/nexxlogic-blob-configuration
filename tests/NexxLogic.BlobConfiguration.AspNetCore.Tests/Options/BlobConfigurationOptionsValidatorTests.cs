@@ -5,7 +5,7 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.Options;
 
 public class BlobConfigurationOptionsValidatorTests
 {
-    private static BlobConfigurationOptionsValidator GetSut(bool blobNameIsRequired = true) => new(blobNameIsRequired);
+    private static BlobConfigurationOptionsValidator GetSut() => new();
 
     [Fact]
     public void Validate_ShouldHaveError_WhenAnyBlobReferenceIsEmpty()
@@ -28,26 +28,6 @@ public class BlobConfigurationOptionsValidatorTests
         result.ShouldHaveValidationErrorFor(b => b.ReloadInterval);
     }
 
-    [Fact]
-    public void Validate_ShouldHaveError_When_BlobNameRequired_And_BlobNameEmpty()
-    {
-        // Arrange
-        var blobConfig = new BlobConfigurationOptions
-        {
-            ConnectionString = "CONNECTION_STRING",
-            ContainerName = "CONTAINER_NAME",
-            BlobName = "",
-            ReloadOnChange = true,
-            ReloadInterval = 1
-        };
-        var sut = GetSut(blobNameIsRequired: true);
-
-        // Act
-        var result = sut.TestValidate(blobConfig);
-
-        // Assert
-        result.ShouldHaveValidationErrorFor(b => b.BlobName);
-    }
 
     [Fact]
     public void Validate_ShouldNotHaveError_When_BlobNameRequired_And_BlobNameEmpty()
@@ -61,7 +41,7 @@ public class BlobConfigurationOptionsValidatorTests
             ReloadOnChange = true,
             ReloadInterval = 1
         };
-        var sut = GetSut(blobNameIsRequired: false);
+        var sut = GetSut();
 
         // Act
         var result = sut.TestValidate(blobConfig);
