@@ -16,11 +16,17 @@ public static class ConfigurationBuilderExtensions
         var options = new BlobConfigurationOptions();
         configure?.Invoke(options);
         new BlobConfigurationOptionsValidator(blobNameIsRequired: true).ValidateAndThrow(options);
+        var blobContainerClientfactory = new BlobContainerClientFactory(options);
+        var blobClientfactory = new BlobClientFactory(blobContainerClientfactory);
 
         return builder.AddJsonFile(source =>
         {
-            source.FileProvider = new BlobFileProvider(new BlobClientFactory(options),
-                new BlobContainerClientFactory(options), options, logger);
+            source.FileProvider = new BlobFileProvider(
+                blobClientfactory,
+                blobContainerClientfactory, 
+                options, 
+                logger
+            );
             source.Optional = options.Optional;
             source.ReloadOnChange = options.ReloadOnChange;
             source.Path = options.BlobName;
@@ -35,8 +41,8 @@ public static class ConfigurationBuilderExtensions
         configure?.Invoke(options);
         new BlobConfigurationOptionsValidator(blobNameIsRequired: false).ValidateAndThrow(options);
 
-        var blobClientfactory = new BlobClientFactory(options);
         var blobContainerClientfactory = new BlobContainerClientFactory(options);
+        var blobClientfactory = new BlobClientFactory(blobContainerClientfactory);
 
         var provider = new BlobFileProvider(blobClientfactory, blobContainerClientfactory, options, logger);
 
@@ -54,8 +60,12 @@ public static class ConfigurationBuilderExtensions
                     ReloadOnChange = options.ReloadOnChange,
                 };
 
-                source.FileProvider = new BlobFileProvider(new BlobClientFactory(blobOptionsConfiguration),
-                    blobContainerClientfactory, blobOptionsConfiguration,logger);
+                source.FileProvider = new BlobFileProvider(
+                    blobClientfactory,
+                    blobContainerClientfactory, 
+                    blobOptionsConfiguration,
+                    logger
+                );
                 source.Optional = blobOptionsConfiguration.Optional;
                 source.ReloadOnChange = blobOptionsConfiguration.ReloadOnChange;
                 source.Path = blobOptionsConfiguration.BlobName;

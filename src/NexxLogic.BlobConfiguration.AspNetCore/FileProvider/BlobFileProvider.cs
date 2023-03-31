@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
+using System.IO;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 
@@ -62,16 +63,21 @@ public class BlobFileProvider : IFileProvider
         {
             foreach (var blobInfo in blobInfoPage.Values)
             {
-                var blobClient = _blobClientFactory.GetBlobClient(blobInfo.Name);
+                var blobClient = containerClient.GetBlobClient(blobInfo.Name);
                 var blob = new BlobFileInfo(blobClient);
                 _lastModified = Math.Max(blob.LastModified.Ticks, _lastModified);
                 fileInfos.Add(blob);
             }
         }
         _loadPending = false;
-        _exists = containerClient.Exists();
 
-        var blobDirectoryContents = new BlobDirectoryContents(containerClient.Exists(), fileInfos);
+        // If the code runs until here, the container will always exist, otherwise it would have 
+        // thrown an error when getting the blobs. Previously, the container.Exists() function was called
+        // which would always return true here, but because of that, we would always need an Account SAS token,
+        // or a connection string, granting access to all the storage account, which is not always intended and 
+        // not necessary
+        _exists = true;
+        var blobDirectoryContents = new BlobDirectoryContents(_exists, fileInfos);
 
         return blobDirectoryContents;
     }

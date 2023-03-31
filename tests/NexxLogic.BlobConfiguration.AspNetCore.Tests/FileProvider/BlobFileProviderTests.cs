@@ -4,7 +4,6 @@ using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
@@ -168,5 +167,4 @@ public class BlobFileProviderTests
         _blobClientMock
             .Verify(_ => _.GetPropertiesAsync(null, changeToken.CancellationToken), Times.Never);
     }
-
 }
