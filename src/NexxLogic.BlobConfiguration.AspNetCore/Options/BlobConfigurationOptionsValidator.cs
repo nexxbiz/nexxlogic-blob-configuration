@@ -10,8 +10,29 @@ internal class BlobConfigurationOptionsValidator : AbstractValidator<BlobConfigu
             .GreaterThanOrEqualTo(5000)
             .When(options => options.ReloadOnChange);
 
-        RuleFor(options => options.ConnectionString).NotEmpty();
+        RuleFor(options => options)
+           .Must((options, _, context) =>
+           {
+               if (!string.IsNullOrWhiteSpace(options.ConnectionString) && !string.IsNullOrWhiteSpace(options.BlobContainerUrl))
+               {
+                   context.AddFailure("ConnectionString_BlobContainerUrl", "Cannot specify both container url and connection string. Please choose one.");
+                   return false;
+               }
+               return true;
+           });
+
+        RuleFor(options => options)
+           .Must((options, _, context) =>
+           {
+               if (string.IsNullOrWhiteSpace(options.ConnectionString) && string.IsNullOrWhiteSpace(options.BlobContainerUrl))
+               {
+                   context.AddFailure("ConnectionString_BlobContainerUrl", "Neither connection string nor container url is specified. Please choose one.");
+                   return false;
+               }
+               return true;
+           });       
+
+
         RuleFor(options => options.ContainerName).NotEmpty();
-        RuleFor(options => options.BlobName).NotEmpty();
     }
 }

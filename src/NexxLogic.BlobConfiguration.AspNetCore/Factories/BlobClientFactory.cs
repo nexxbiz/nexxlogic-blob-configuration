@@ -1,21 +1,20 @@
 ﻿using Azure.Storage.Blobs;
-using NexxLogic.BlobConfiguration.AspNetCore.Options;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Factories;
 
-public class BlobClientFactory : IBlobClientFactory
+public sealed class BlobClientFactory : IBlobClientFactory
 {
-    private readonly BlobConfigurationOptions _blobConfig;
+    private readonly IBlobContainerClientFactory blobContainerClientFactory;
 
-    public BlobClientFactory(BlobConfigurationOptions blobConfig)
+    public BlobClientFactory(IBlobContainerClientFactory blobContainerClientFactory)
     {
-        _blobConfig = blobConfig;
+        this.blobContainerClientFactory = blobContainerClientFactory;
     }
 
     public BlobClient GetBlobClient(string path)
     {
-        var serviceClient = new BlobServiceClient(_blobConfig.ConnectionString);
-        var containerClient = serviceClient.GetBlobContainerClient(_blobConfig.ContainerName);
-        return containerClient.GetBlobClient(path);
+        return blobContainerClientFactory
+            .GetBlobContainerClient()
+            .GetBlobClient(path);
     }
 }
