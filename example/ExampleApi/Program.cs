@@ -47,13 +47,13 @@ builder.Configuration.AddAllJsonBlobsInContainer(config =>
 );
 
 // Registers and listens to updates of the blob container (when files are added at runtime, they are listened to as well)
-builder.Configuration.AddJsonBlobContainerFolder(config =>
+builder.Configuration.AddJsonBlobContainerFileCollection(config =>
     {
         builder.Configuration.GetSection("BlobConfiguration").Bind(config);
         config.ReloadOnChange = true;
         config.Prefix = "ExecutorSettings"; // Folder Name
     },
-    loggerFactory.CreateLogger<BlobContainerFolderProvider>()
+    loggerFactory.CreateLogger<BlobContainerFileCollectionProvider>()
 );
 
 builder.Services.Configure<ExampleOptions>(builder.Configuration.GetSection("ExampleSettings"));

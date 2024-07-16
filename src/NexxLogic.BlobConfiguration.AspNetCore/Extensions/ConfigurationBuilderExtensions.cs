@@ -34,8 +34,8 @@ public static class ConfigurationBuilderExtensions
     }
 
     /// <summary>
-    /// Adds a blob container, or a blob container folder, as a configuration source. All files in the container/folder will be watched.
-    /// When new JSON blob files are added in the container/folder, the JSON content will be added as new keys to <see cref="IConfiguration"/>.
+    /// Adds a blob container as a configuration source. All files in the container, that match the prefix when specified, will be watched.
+    /// This means that when new JSON blob files are added at runtime, the JSON content will be added as new keys to <see cref="IConfiguration"/>.
     /// When JSON blob files are updated, their respective configuration keys will be updated with their latest contents.
     /// </summary>
     /// <remarks>
@@ -45,21 +45,19 @@ public static class ConfigurationBuilderExtensions
     /// <param name="configure"></param>
     /// <param name="logger"></param>
     /// <returns></returns>
-    public static IConfigurationBuilder AddJsonBlobContainerFolder(
+    public static IConfigurationBuilder AddJsonBlobContainerFileCollection(
         this IConfigurationBuilder builder,
         Action<BlobConfigurationOptions> configure,
-        ILogger<BlobContainerFolderProvider> logger)
+        ILogger<BlobContainerFileCollectionProvider> logger)
     {
         var options = new BlobConfigurationOptions();
         configure?.Invoke(options);
         new BlobConfigurationOptionsValidator().ValidateAndThrow(options);
         var blobContainerClientfactory = new BlobContainerClientFactory(options);
-        var blobClientfactory = new BlobClientFactory(blobContainerClientfactory);
 
         return builder.AddJsonFile(source =>
         {
-            source.FileProvider = new BlobContainerFolderProvider(
-                blobClientfactory,
+            source.FileProvider = new BlobContainerFileCollectionProvider(
                 blobContainerClientfactory,
                 options,
                 logger

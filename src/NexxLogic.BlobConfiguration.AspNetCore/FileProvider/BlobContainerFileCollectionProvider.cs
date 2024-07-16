@@ -4,20 +4,17 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
-using System.Text.Json.Nodes;
-using System.Text;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 
-public class BlobContainerFolderProvider : IFileProvider
+public class BlobContainerFileCollectionProvider : IFileProvider
 {
-    private readonly IBlobClientFactory _blobClientFactory;
     private readonly IBlobContainerClientFactory _blobContainerClientFactory;
     private readonly BlobConfigurationOptions _blobConfig;
-    private readonly ILogger<BlobContainerFolderProvider> _logger;
+    private readonly ILogger<BlobContainerFileCollectionProvider> _logger;
 
     private BlobChangeToken _changeToken = new();
-    private BlobContainerFolderInfo? folderInfo;
+    private BlobContainerFileCollection? blobFileCollection;
 
     /// <summary>
     /// Set to true on initial load. Also set to true when any changes/updates are detected to the blob container folder; e.g. updating or adding files.
@@ -25,12 +22,11 @@ public class BlobContainerFolderProvider : IFileProvider
     /// </summary>
     private volatile bool loadPending;
 
-    public BlobContainerFolderProvider(IBlobClientFactory blobClientFactory,
+    public BlobContainerFileCollectionProvider(
         IBlobContainerClientFactory blobContainerClientFactory,
         BlobConfigurationOptions blobConfig,
-        ILogger<BlobContainerFolderProvider> logger)
+        ILogger<BlobContainerFileCollectionProvider> logger)
     {
-        _blobClientFactory = blobClientFactory;
         _blobConfig = blobConfig;
         _blobContainerClientFactory = blobContainerClientFactory;
         _logger = logger;
@@ -38,16 +34,16 @@ public class BlobContainerFolderProvider : IFileProvider
         loadPending = true;
     }
 
-    public IFileInfo GetFileInfo(string subpath)
+    public IFileInfo GetFileInfo(string prefix)
     {
-        HandleLoading(subpath);
-        return folderInfo!;
+        HandleLoading(prefix);
+        return blobFileCollection!;
     }
 
-    public IDirectoryContents GetDirectoryContents(string subpath)
+    public IDirectoryContents GetDirectoryContents(string prefix)
     {
-        HandleLoading(subpath);
-        var blobDirectoryContents = new BlobDirectoryContents(containerExists: true, new List<IFileInfo> { folderInfo! });
+        HandleLoading(prefix);
+        var blobDirectoryContents = new BlobDirectoryContents(containerExists: true, new List<IFileInfo> { blobFileCollection! });
         return blobDirectoryContents;
     }
 
@@ -58,67 +54,26 @@ public class BlobContainerFolderProvider : IFileProvider
         return _changeToken;
     }
 
-    void HandleLoading(string subpath)
+    void HandleLoading(string prefix)
     {
-        if (subpath != _blobConfig.Prefix && !string.IsNullOrWhiteSpace(subpath))
+        if (prefix != _blobConfig.Prefix && !string.IsNullOrWhiteSpace(prefix))
         {
-            throw new InvalidOperationException($"Could not return file info for sub path '{subpath}'. You can specify a folder name for the blob container. " +
+            throw new InvalidOperationException($"Could not return file info for sub path '{prefix}'. You can specify a folder name for the blob container. " +
                 $"In this case, please make sure you are assigning the value to the Prefix property of the Blob Configuration.");
         }
 
-        if (folderInfo is null)
+        if (blobFileCollection is null)
         {
-            folderInfo = new BlobContainerFolderInfo(_blobConfig.ContainerName, subpath);
-            LoadFolder(folderInfo);
+            blobFileCollection = new BlobContainerFileCollection(_blobContainerClientFactory, prefix);
+            blobFileCollection.Load();
         }
         else if (loadPending)
         {
-            folderInfo.ResetFolder();
-            LoadFolder(folderInfo);
+            blobFileCollection.Load();
         }
 
         loadPending = false;
-    }
-
-    void LoadFolder(BlobContainerFolderInfo folderInfo)
-    {
-        var containerClient = _blobContainerClientFactory.GetBlobContainerClient();
-        var result = new JsonObject();
-
-        long lastModified = 0;
-        var blobFileNames = new List<string>();
-        foreach (var blobInfoPage in containerClient.GetBlobs(prefix: folderInfo.FolderName).AsPages())
-        {
-            foreach (var blobInfo in blobInfoPage.Values)
-            {
-                var blobClient = containerClient.GetBlobClient(blobInfo.Name);
-                var properties = blobClient.GetProperties();
-                lastModified = Math.Max(properties.Value.LastModified.Ticks, lastModified);
-                blobFileNames.Add(blobInfo.Name);
-
-                var blob = new BlobFileInfo(blobClient);
-
-                using var jsonStream = blob.CreateReadStream();
-                var jsonFileObject = JsonNode.Parse(jsonStream)?.AsObject()
-                    ?? throw new InvalidOperationException($"Blob '{blob.Name}' does not contain a valid JSON object");
-
-                jsonFileObject.ToList().ForEach(p =>
-                {
-                    if (p.Value is not null)
-                    {
-                        result.Add(p.Key, JsonNode.Parse(
-                            p.Value!.ToJsonString()
-                        ));
-                    }
-                });
-            }
-        }
-
-        var jsonString = result.ToJsonString();
-        var folderBytes = Encoding.UTF8.GetBytes(jsonString);
-
-        folderInfo.PopulateFolderContent(folderBytes, blobFileNames, lastModified);
-    }
+    }    
 
     private async Task WatchBlobContainerUpdates(BlobContainerClient blobContainerClient, CancellationToken token)
     {
@@ -135,7 +90,7 @@ public class BlobContainerFolderProvider : IFileProvider
                     continue;
                 }
 
-                if (folderInfo is null)
+                if (blobFileCollection is null)
                 {
                     _logger.LogWarning("The blob container folder is not loaded yet");
                     continue;
@@ -145,7 +100,7 @@ public class BlobContainerFolderProvider : IFileProvider
                 {
                     foreach (var blobItem in blobItemPage.Values)
                     {
-                        if (!folderInfo!.FolderContainsBlobFile(blobItem.Name))
+                        if (!blobFileCollection!.FolderContainsBlobFile(blobItem.Name))
                         {
                             _logger.LogWarning("New blob file was added to container / folder");
                             RaiseChanged();
@@ -154,7 +109,7 @@ public class BlobContainerFolderProvider : IFileProvider
 
                         var blobClient = blobContainerClient.GetBlobClient(blobItem.Name);
                         var blobProperties = await blobClient.GetPropertiesAsync(cancellationToken: token);
-                        if (blobProperties.Value.LastModified.Ticks > folderInfo.LastModified.Ticks)
+                        if (blobProperties.Value.LastModified.Ticks > blobFileCollection.LastModified.Ticks)
                         {
                             _logger.LogWarning("Blob file was modified");
                             RaiseChanged();
