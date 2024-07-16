@@ -33,6 +33,47 @@ public static class ConfigurationBuilderExtensions
         });
     }
 
+    /// <summary>
+    /// Adds a blob container, or a blob container folder, as a configuration source. All files in the container/folder will be watched.
+    /// When new JSON blob files are added in the container/folder, the JSON content will be added as new keys to <see cref="IConfiguration"/>.
+    /// When JSON blob files are updated, their respective configuration keys will be updated with their latest contents.
+    /// </summary>
+    /// <remarks>
+    /// ** Please make sure the JSON blob files contain valid JSON objects, and that each root property in every JSON object file has a unique name.
+    /// </remarks>
+    /// <param name="builder"></param>
+    /// <param name="configure"></param>
+    /// <param name="logger"></param>
+    /// <returns></returns>
+    public static IConfigurationBuilder AddJsonBlobContainerFolder(
+        this IConfigurationBuilder builder,
+        Action<BlobConfigurationOptions> configure,
+        ILogger<BlobContainerFolderProvider> logger)
+    {
+        var options = new BlobConfigurationOptions();
+        configure?.Invoke(options);
+        new BlobConfigurationOptionsValidator().ValidateAndThrow(options);
+        var blobContainerClientfactory = new BlobContainerClientFactory(options);
+        var blobClientfactory = new BlobClientFactory(blobContainerClientfactory);
+
+        return builder.AddJsonFile(source =>
+        {
+            source.FileProvider = new BlobContainerFolderProvider(
+                blobClientfactory,
+                blobContainerClientfactory,
+                options,
+                logger
+            );
+            source.Optional = options.Optional;
+            source.ReloadOnChange = options.ReloadOnChange;
+
+            if (!string.IsNullOrWhiteSpace(options.Prefix))
+            {
+                source.Path = options.Prefix;
+            }
+        });
+    }
+
     public static IConfigurationBuilder AddAllJsonBlobsInContainer(this IConfigurationBuilder builder,
         Action<BlobConfigurationOptions> configure,
         ILogger<BlobFileProvider> logger)
@@ -48,6 +89,7 @@ public static class ConfigurationBuilderExtensions
 
         foreach (var blobInfo in provider.GetDirectoryContents(""))
         {
+            
             builder.AddJsonFile(source =>
             {
                 var blobOptionsConfiguration = new BlobConfigurationOptions

@@ -6,6 +6,7 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.Factories;
 public class BlobContainerClientFactory : IBlobContainerClientFactory
 {
     private readonly BlobConfigurationOptions _blobConfig;
+    private BlobContainerClient? clientSingleton;
 
     public BlobContainerClientFactory(BlobConfigurationOptions blobConfig)
     {
@@ -14,12 +15,21 @@ public class BlobContainerClientFactory : IBlobContainerClientFactory
 
     public BlobContainerClient GetBlobContainerClient()
     {
-        if(!string.IsNullOrWhiteSpace(_blobConfig.BlobContainerUrl))
+        if (clientSingleton is not null)
         {
-            return new BlobContainerClient(new Uri(_blobConfig.BlobContainerUrl));
+            return clientSingleton;
         }
 
-        var serviceClient = new BlobServiceClient(_blobConfig.ConnectionString);
-        return serviceClient.GetBlobContainerClient(_blobConfig.ContainerName);
-    }
+        if(!string.IsNullOrWhiteSpace(_blobConfig.BlobContainerUrl))
+        {
+            clientSingleton = new BlobContainerClient(new Uri(_blobConfig.BlobContainerUrl));
+        }
+        else
+        {
+            var serviceClient = new BlobServiceClient(_blobConfig.ConnectionString);
+            clientSingleton = serviceClient.GetBlobContainerClient(_blobConfig.ContainerName);
+        }
+
+        return clientSingleton;
+    }   
 }

@@ -12,6 +12,15 @@ public class BlobConfigurationOptions
     /// </value>
     public string BlobContainerUrl { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Gets or sets the SAS URL for reading properties and meta data of the Blob Container itself. Make sure you have selected Container as one 
+    /// of the allowed resource types, and that you have selected the Read and List permissions.
+    /// </summary>
+    /// <value>
+    /// The Blob Service SAS URL
+    /// </value>
+    public string BlobContainerServiceSasUrl { get; set; } = string.Empty;
+
     public string ContainerName { get; set; } = string.Empty;
     public string BlobName { get; set; } = string.Empty;
     public string? Prefix { get; set; }
