@@ -107,7 +107,22 @@ public class BlobFileProvider : IFileProvider
                 if (!_exists)
                 {
                     _logger.LogWarning("file does not exist");
-                    break;
+
+                    if (_blobConfig.Optional)
+                    {
+                        _logger.LogInformation("Checking if optional file is added to blob container since last scan");
+
+                        var doesItExistNow = blobClient.Exists(cancellationToken: token);
+                        if (doesItExistNow)
+                        {
+                            RaiseChanged();
+                        }
+                        continue;
+                    }
+                    else
+                    {
+                        break;
+                    }
                 }
 
                 var properties = await blobClient.GetPropertiesAsync(cancellationToken: token);
