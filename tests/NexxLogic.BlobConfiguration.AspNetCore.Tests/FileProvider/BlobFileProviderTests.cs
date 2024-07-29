@@ -167,12 +167,14 @@ public class BlobFileProviderTests
 
         // Act
         var changeToken = (BlobChangeToken)sut.Watch(BLOB_NAME);
-        await Task.Delay(30);
+        await Task.Delay(100);
 
         // Assert
-        blobClientMock
-            .Received()
-            .Exists(changeToken.CancellationToken);
+        var existCalls = blobClientMock.ReceivedCalls().Where(x =>
+        {
+            return x.GetMethodInfo().Name == nameof(BlobClient.Exists);
+        });
+        Assert.True(existCalls.Count() > 1);
     }
 
     [Fact]
