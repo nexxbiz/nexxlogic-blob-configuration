@@ -1,6 +1,7 @@
 ﻿using Azure.Storage.Blobs;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
+using NSubstitute;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.Factories;
 
@@ -12,19 +13,28 @@ public class BlobClientFactoryTests
         // Arrange
         var blobName = "settings.json";
         var blobContainerName = "config";
-        var blobContainerFactory = new Mock<IBlobContainerClientFactory>();
+        var blobContainerFactory = Substitute.For<IBlobContainerClientFactory>();
 
-        var blobClient = new Mock<BlobClient>();
-        blobClient.SetupGet(x => x.BlobContainerName).Returns(blobContainerName);
-        blobClient.SetupGet(x => x.Name).Returns(blobName);
+        var blobClient = Substitute.For<BlobClient>();
+        blobClient
+            .BlobContainerName
+            .Returns(blobContainerName);
 
-        var blobContainerClient = new Mock<BlobContainerClient>();
-        blobContainerClient.SetupGet(x => x.Name).Returns(blobContainerName);
-        blobContainerClient.Setup(x => x.GetBlobClient(blobName)).Returns(blobClient.Object);
-        blobContainerFactory.Setup(x => x.GetBlobContainerClient())
-            .Returns(blobContainerClient.Object);
+        blobClient
+            .Name
+            .Returns(blobName);
 
-        var sut = new BlobClientFactory(blobContainerFactory.Object);
+        var blobContainerClient = Substitute.For<BlobContainerClient>();
+        blobContainerClient.Name.Returns(blobContainerName);
+        blobContainerClient
+            .GetBlobClient(blobName)
+            .Returns(blobClient);
+
+        blobContainerFactory
+            .GetBlobContainerClient()
+            .Returns(blobContainerClient);
+
+        var sut = new BlobClientFactory(blobContainerFactory);
 
         // Act
         var result = sut.GetBlobClient(blobName);

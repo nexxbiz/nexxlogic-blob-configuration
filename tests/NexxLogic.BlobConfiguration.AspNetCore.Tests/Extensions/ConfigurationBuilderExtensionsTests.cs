@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NexxLogic.BlobConfiguration.AspNetCore.Extensions;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
+using NSubstitute;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.Extensions;
 
@@ -15,38 +16,48 @@ public class BlobConfigurationBuilderExtensionsTests
     public void AddJsonBlob_ShouldThrowValidationException_WhenBlobConfigurationOptionsIsNotValid()
     {
         // Arrange
-        var configurationBuilderMock = new Mock<IConfigurationBuilder>();
+        var configurationBuilderMock = Substitute.For<IConfigurationBuilder>();
         var loggerFactory = new NullLoggerFactory();
         var logger = loggerFactory.CreateLogger<BlobFileProvider>();
 
         // Act
-        var method = () => configurationBuilderMock.Object.AddJsonBlob(config => { }, logger);
+        var method = () => configurationBuilderMock.AddJsonBlob(config => { }, logger);
 
         // Assert
         method.Should().Throw<ValidationException>();
         configurationBuilderMock
-            .Verify(_ => _.Add(It.IsAny<IConfigurationSource>()), Times.Never);
+            .DidNotReceive()
+            .Add(Substitute.For<IConfigurationSource>());
     }
 
     [Fact]
     public void AddJsonBlob_ShouldAddConfigurationSource_WhenBlobConfigurationBuilderOptionsIsValid()
     {
         // Arrange
-        var configurationBuilderMock = new Mock<IConfigurationBuilder>();
+        var configurationBuilderMock = Substitute.For<IConfigurationBuilder>();
 
         var loggerFactory = new NullLoggerFactory();
         var logger = loggerFactory.CreateLogger<BlobFileProvider>();
 
         // Act
-        configurationBuilderMock.Object.AddJsonBlob(config =>
+        configurationBuilderMock.AddJsonBlob(config =>
         {
             config.ConnectionString = "CONNECTION_STRING";
             config.ContainerName = "CONTAINER_NAME";
             config.BlobName = "BLOB_NAME";
-        }, logger);
+        }, 
+        logger);
 
         // Assert
-        configurationBuilderMock
-            .Verify(_ => _.Add(It.IsAny<JsonConfigurationSource>()), Times.Once);
+        var calls = configurationBuilderMock.ReceivedCalls();
+
+        var addCall = calls.Single(x =>
+        {
+            var methodInfo = x.GetMethodInfo();
+            return methodInfo.Name == nameof(IConfigurationBuilder.Add);
+        });
+        var arguments = addCall.GetArguments();
+        var argument = arguments.Single();
+        Assert.Equal(typeof(JsonConfigurationSource), argument?.GetType());
     }
 }
