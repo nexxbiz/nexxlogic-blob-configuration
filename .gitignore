@@ -7,8 +7,7 @@ Marketplace
 Explore
  
 @megamen909 
-
-Branch master was renamed to main.  
+.idea  
 github
 /
 gitignore
@@ -39,6 +38,7 @@ Latest commit 491040e on Jan 26
 *.user
 *.userosscache
 *.sln.docstates
+.DS_Store
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
