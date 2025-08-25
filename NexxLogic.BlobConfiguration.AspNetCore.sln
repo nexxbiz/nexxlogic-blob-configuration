@@ -11,15 +11,17 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{A558FC7B
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NexxLogic.BlobConfiguration.AspNetCore.Tests", "tests\NexxLogic.BlobConfiguration.AspNetCore.Tests\NexxLogic.BlobConfiguration.AspNetCore.Tests.csproj", "{838FEC78-9AFD-45A5-A307-6D9A485A6887}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "example", "example", "{5E3BA63F-F7D4-49D6-91A6-08A6C9304DC1}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "examples", "examples", "{5E3BA63F-F7D4-49D6-91A6-08A6C9304DC1}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ExampleApi", "example\ExampleApi\ExampleApi.csproj", "{41A8D7F4-0270-4C69-8103-AB120426F755}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "solution", "solution", "{06A5ABBF-5B2E-4FB1-B23F-43FD589F6C69}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "items", "items", "{06A5ABBF-5B2E-4FB1-B23F-43FD589F6C69}"
 	ProjectSection(SolutionItems) = preProject
-		.github\workflows\ci.yml = .github\workflows\ci.yml
-		.github\workflows\release.yml = .github\workflows\release.yml
 		.gitignore = .gitignore
+		.github\workflows\ci.yml = .github\workflows\ci.yml
+		Directory.Build.props = Directory.Build.props
+		Directory.Packages.props = Directory.Packages.props
+		.github\workflows\release.yml = .github\workflows\release.yml
 	EndProjectSection
 EndProject
 Global
