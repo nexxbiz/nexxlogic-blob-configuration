@@ -206,24 +206,21 @@ public class BlobFileProvider : IFileProvider, IDisposable
 
     private void CleanupDeadReferences()
     {
-        // Only cleanup occasionally to avoid performance impact
-        if (_watchTokenCache.Count > 10) // Arbitrary threshold
-        {
-            var deadKeys = new List<string>();
-            
-            foreach (var kvp in _watchTokenCache)
-            {
-                if (!kvp.Value.TryGetTarget(out _))
-                {
-                    deadKeys.Add(kvp.Key);
-                }
-            }
+        // Clean up dead weak references on every access to prevent unbounded growth
+        var deadKeys = new List<string>();
 
-            foreach (var key in deadKeys)
+        foreach (var kvp in _watchTokenCache)
+        {
+            if (!kvp.Value.TryGetTarget(out _))
             {
-                _watchTokenCache.TryRemove(key, out _);
-                _logger.LogDebug("Cleaned up dead watch token reference for blob path: {BlobPath}", key);
+                deadKeys.Add(kvp.Key);
             }
+        }
+
+        foreach (var key in deadKeys)
+        {
+            _watchTokenCache.TryRemove(key, out _);
+            _logger.LogDebug("Cleaned up dead watch token reference for blob path: {BlobPath}", key);
         }
     }
 
