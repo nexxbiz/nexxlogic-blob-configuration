@@ -119,18 +119,20 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
             return await CheckETag(blobClient);
         }
 
-        await using var stream = await blobClient.OpenReadAsync(cancellationToken: _cts.Token);
-        using var sha256 = SHA256.Create();
-        var hashBytes = await sha256.ComputeHashAsync(stream, _cts.Token);
-        var currentHash = Convert.ToBase64String(hashBytes);
-
-        var previousHash = _contentHashes.GetValueOrDefault(_blobPath);
-        if (currentHash != previousHash)
+        await using (var stream = await blobClient.OpenReadAsync(cancellationToken: _cts.Token))
+        using (var sha256 = SHA256.Create())
         {
-            _contentHashes[_blobPath] = currentHash;
-            _logger.LogInformation("Content change detected for blob {BlobPath}. Hash changed from {OldHash} to {NewHash}",
-                _blobPath, previousHash?.Substring(0, 8) + "...", currentHash.Substring(0, 8) + "...");
-            return true;
+            var hashBytes = await sha256.ComputeHashAsync(stream, _cts.Token);
+            var currentHash = Convert.ToBase64String(hashBytes);
+
+            var previousHash = _contentHashes.GetValueOrDefault(_blobPath);
+            if (currentHash != previousHash)
+            {
+                _contentHashes[_blobPath] = currentHash;
+                _logger.LogInformation("Content change detected for blob {BlobPath}. Hash changed from {OldHash} to {NewHash}",
+                    _blobPath, previousHash?.Substring(0, 8) + "...", currentHash.Substring(0, 8) + "...");
+                return true;
+            }
         }
 
         return false;
