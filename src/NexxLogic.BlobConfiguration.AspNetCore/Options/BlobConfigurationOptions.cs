@@ -1,4 +1,6 @@
-﻿namespace NexxLogic.BlobConfiguration.AspNetCore.Options;
+﻿using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
+
+namespace NexxLogic.BlobConfiguration.AspNetCore.Options;
 
 public class BlobConfigurationOptions
 {
@@ -32,9 +34,9 @@ public class BlobConfigurationOptions
     public int DebounceDelaySeconds { get; set; } = 30;
 
     /// <summary>
-    /// Use content-based change detection instead of just ETag/LastModified
+    /// Change detection strategy to use for monitoring blob modifications
     /// </summary>
-    public bool UseContentBasedChangeDetection { get; set; } = true;
+    public ChangeDetectionStrategy ChangeDetectionStrategy { get; set; } = ChangeDetectionStrategy.ContentBased;
 
     /// <summary>
     /// Maximum file size in MB for content-based hash calculation
@@ -42,7 +44,12 @@ public class BlobConfigurationOptions
     public int MaxFileContentHashSizeMb { get; set; } = 1;
 
     /// <summary>
-    /// Enable detailed logging for debugging configuration changes
+    /// Interval in seconds for polling blob changes during watching
     /// </summary>
-    public bool EnableDetailedLogging { get; set; }
+    public int WatchingIntervalSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// Delay in seconds before retrying after an error during blob watching
+    /// </summary>
+    public int ErrorRetryDelaySeconds { get; set; } = 60;
 }

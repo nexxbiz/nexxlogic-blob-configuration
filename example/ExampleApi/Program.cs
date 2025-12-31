@@ -20,10 +20,12 @@ builder.Configuration.AddJsonBlob(config =>
     config.BlobName = "settings.json";
     config.ReloadOnChange = true;
     config.ReloadInterval = 10_000;
-    config.UseContentBasedChangeDetection = true;
+    
+    config.ChangeDetectionStrategy = ChangeDetectionStrategy.ContentBased;
     config.DebounceDelaySeconds = 15;
     config.MaxFileContentHashSizeMb = 2;
-    config.EnableDetailedLogging = true;
+    config.WatchingIntervalSeconds = 20; // Poll every 20 seconds
+    config.ErrorRetryDelaySeconds = 30; // Retry after 30 seconds on error
 }, logger);
 
 builder.Configuration.AddJsonBlob(config =>
@@ -31,10 +33,11 @@ builder.Configuration.AddJsonBlob(config =>
     builder.Configuration.GetSection("BlobConfiguration").Bind(config);
     config.BlobName = "Folder/settings.json";
     
-    // Enhanced features for second blob
-    config.UseContentBasedChangeDetection = true;
+    // Enhanced features for second blob - using ETag for fast detection
+    config.ChangeDetectionStrategy = ChangeDetectionStrategy.ETag;
     config.DebounceDelaySeconds = 10;
-    config.EnableDetailedLogging = false;
+    config.WatchingIntervalSeconds = 60; // Poll every 60 seconds for less frequent checks
+    config.ErrorRetryDelaySeconds = 120; // Longer retry delay for non-critical config
 }, logger);
 builder.Services.Configure<ExampleOptions>(builder.Configuration.GetSection("ExampleSettings"));
 

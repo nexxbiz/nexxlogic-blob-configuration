@@ -16,11 +16,13 @@ public class BlobFileProvider : IFileProvider, IDisposable
     private readonly ILogger<BlobFileProvider> _logger;
     private readonly BlobServiceClient? _blobServiceClient;
     private readonly TimeSpan _debounceDelay;
-    private readonly bool _useContentBasedDetection;
+    private readonly TimeSpan _watchingInterval;
+    private readonly TimeSpan _errorRetryDelay;
+    private readonly ChangeDetectionStrategy _changeDetectionStrategy;
     private readonly int _maxContentHashSizeMb;
-    private readonly bool _enableDetailedLogging;
     private readonly ConcurrentDictionary<string, string> _contentHashes;
     private readonly ConcurrentDictionary<string, Timer> _debounceTimers;
+    private readonly ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>> _watchTokenCache;
     private volatile bool _disposed;
 
     private BlobChangeToken _changeToken = new();
@@ -51,15 +53,17 @@ public class BlobFileProvider : IFileProvider, IDisposable
 
         // Initialize enhanced options with defaults
         _debounceDelay = TimeSpan.FromSeconds(_blobConfig.DebounceDelaySeconds);
-        _useContentBasedDetection = _blobConfig.UseContentBasedChangeDetection;
+        _watchingInterval = TimeSpan.FromSeconds(_blobConfig.WatchingIntervalSeconds);
+        _errorRetryDelay = TimeSpan.FromSeconds(_blobConfig.ErrorRetryDelaySeconds);
+        _changeDetectionStrategy = _blobConfig.ChangeDetectionStrategy;
         _maxContentHashSizeMb = _blobConfig.MaxFileContentHashSizeMb;
-        _enableDetailedLogging = _blobConfig.EnableDetailedLogging;
         
         _contentHashes = new ConcurrentDictionary<string, string>();
         _debounceTimers = new ConcurrentDictionary<string, Timer>();
+        _watchTokenCache = new ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>>();
 
         // Create BlobServiceClient for enhanced change token if enhanced features are used
-        if (_useContentBasedDetection)
+        if (_changeDetectionStrategy != ChangeDetectionStrategy.ETag)
         {
             try
             {
@@ -80,11 +84,8 @@ public class BlobFileProvider : IFileProvider, IDisposable
             }
         }
 
-        if (_enableDetailedLogging)
-        {
-            _logger.LogInformation("BlobFileProvider initialized with debounce: {Debounce}s, content-based detection: {ContentBased}",
-                _debounceDelay.TotalSeconds, _useContentBasedDetection);
-        }
+        _logger.LogDebug("BlobFileProvider initialized with debounce: {Debounce}s, strategy: {Strategy}",
+            _debounceDelay.TotalSeconds, _changeDetectionStrategy);
     }
 
     public IFileInfo GetFileInfo(string subpath)
@@ -132,32 +133,98 @@ public class BlobFileProvider : IFileProvider, IDisposable
         if (_disposed) throw new ObjectDisposedException(nameof(BlobFileProvider));
 
         // Use enhanced change token if available, otherwise fall back to legacy implementation
-        if (_blobServiceClient != null && _useContentBasedDetection)
+        if (_blobServiceClient != null && _changeDetectionStrategy != ChangeDetectionStrategy.ETag)
         {
-            if (_enableDetailedLogging)
-            {
-                _logger.LogDebug("Creating enhanced watch token for filter: {Filter} with debounce: {Debounce}s", 
-                    filter, _debounceDelay.TotalSeconds);
-            }
-
             var blobPath = GetBlobPath(filter);
             
-            return new EnhancedBlobChangeToken(
+            // Try to get existing token from cache first
+            var cachedToken = GetOrCreateEnhancedToken(blobPath);
+            if (cachedToken != null)
+            {
+                _logger.LogDebug("Reusing cached enhanced watch token for blob path: {BlobPath}", blobPath);
+                return cachedToken;
+            }
+
+            _logger.LogDebug("Creating new enhanced watch token for filter: {Filter} with strategy: {Strategy}", 
+                filter, _changeDetectionStrategy);
+
+            var strategy = CreateChangeDetectionStrategy();
+            
+            var newToken = new EnhancedBlobChangeToken(
                 _blobServiceClient,
                 _blobConfig.ContainerName,
                 blobPath,
                 _debounceDelay,
-                _useContentBasedDetection,
-                _maxContentHashSizeMb,
+                _watchingInterval,
+                _errorRetryDelay,
+                strategy,
                 _contentHashes,
                 _debounceTimers,
                 _logger);
+
+            // Cache the new token with weak reference
+            _watchTokenCache[blobPath] = new WeakReference<EnhancedBlobChangeToken>(newToken);
+            
+            return newToken;
         }
 
         // Legacy implementation
         var client = _blobClientFactory.GetBlobClient(filter);
         _ = WatchBlobUpdate(client, _changeToken.CancellationToken);
         return _changeToken;
+    }
+
+    private IChangeDetectionStrategy CreateChangeDetectionStrategy()
+    {
+        return _changeDetectionStrategy switch
+        {
+            ChangeDetectionStrategy.ContentBased => new ContentBasedChangeDetectionStrategy(_logger, _maxContentHashSizeMb),
+            ChangeDetectionStrategy.ETag => new ETagChangeDetectionStrategy(_logger)
+        };
+    }
+
+    private EnhancedBlobChangeToken? GetOrCreateEnhancedToken(string blobPath)
+    {
+        // Clean up dead weak references periodically
+        CleanupDeadReferences();
+
+        // Try to get existing live token
+        if (_watchTokenCache.TryGetValue(blobPath, out var weakRef) && 
+            weakRef.TryGetTarget(out var existingToken))
+        {
+            return existingToken;
+        }
+
+        // Remove dead reference if it exists
+        if (weakRef != null)
+        {
+            _watchTokenCache.TryRemove(blobPath, out _);
+        }
+
+        return null;
+    }
+
+    private void CleanupDeadReferences()
+    {
+        // Only cleanup occasionally to avoid performance impact
+        if (_watchTokenCache.Count > 10) // Arbitrary threshold
+        {
+            var deadKeys = new List<string>();
+            
+            foreach (var kvp in _watchTokenCache)
+            {
+                if (!kvp.Value.TryGetTarget(out _))
+                {
+                    deadKeys.Add(kvp.Key);
+                }
+            }
+
+            foreach (var key in deadKeys)
+            {
+                _watchTokenCache.TryRemove(key, out _);
+                _logger.LogDebug("Cleaned up dead watch token reference for blob path: {BlobPath}", key);
+            }
+        }
     }
 
     private string GetBlobPath(string filter)
@@ -246,6 +313,23 @@ public class BlobFileProvider : IFileProvider, IDisposable
         if (_disposed) return;
         _disposed = true;
 
+        // Dispose all cached enhanced tokens
+        foreach (var kvp in _watchTokenCache)
+        {
+            if (kvp.Value.TryGetTarget(out var token))
+            {
+                try
+                {
+                    token.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error disposing cached watch token for blob path: {BlobPath}", kvp.Key);
+                }
+            }
+        }
+        _watchTokenCache.Clear();
+
         // Dispose all active debounce timers
         foreach (var timer in _debounceTimers.Values)
         {
@@ -253,9 +337,6 @@ public class BlobFileProvider : IFileProvider, IDisposable
         }
         _debounceTimers.Clear();
 
-        if (_enableDetailedLogging)
-        {
-            _logger.LogDebug("BlobFileProvider disposed");
-        }
+        _logger.LogDebug("BlobFileProvider disposed");
     }
 }

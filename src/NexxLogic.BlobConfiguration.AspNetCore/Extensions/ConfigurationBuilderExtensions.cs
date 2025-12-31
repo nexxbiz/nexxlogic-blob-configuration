@@ -61,9 +61,10 @@ public static class ConfigurationBuilderExtensions
                     ReloadOnChange = options.ReloadOnChange,
                     // Enhanced properties
                     DebounceDelaySeconds = options.DebounceDelaySeconds,
-                    UseContentBasedChangeDetection = options.UseContentBasedChangeDetection,
+                    ChangeDetectionStrategy = options.ChangeDetectionStrategy,
                     MaxFileContentHashSizeMb = options.MaxFileContentHashSizeMb,
-                    EnableDetailedLogging = options.EnableDetailedLogging
+                    WatchingIntervalSeconds = options.WatchingIntervalSeconds,
+                    ErrorRetryDelaySeconds = options.ErrorRetryDelaySeconds
                 };
 
                 source.FileProvider = new BlobFileProvider(

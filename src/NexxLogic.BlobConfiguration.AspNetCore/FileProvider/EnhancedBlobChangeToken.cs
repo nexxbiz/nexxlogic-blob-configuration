@@ -2,7 +2,6 @@ using Azure.Storage.Blobs;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using System.Collections.Concurrent;
-using System.Security.Cryptography;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 
@@ -12,16 +11,19 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
     private readonly string _containerName;
     private readonly string _blobPath;
     private readonly TimeSpan _debounceDelay;
-    private readonly bool _useContentBasedDetection;
-    private readonly int _maxContentHashSizeMb;
+    private readonly TimeSpan _watchingInterval;
+    private readonly TimeSpan _errorRetryDelay;
+    private readonly IChangeDetectionStrategy _changeDetectionStrategy;
     private readonly ConcurrentDictionary<string, string> _contentHashes;
     private readonly ConcurrentDictionary<string, Timer> _debounceTimers;
     private readonly ILogger _logger;
 
     private readonly CancellationTokenSource _cts;
+    private readonly Task _watchingTask;
     private volatile bool _hasChanged;
+    private volatile bool _disposed;
     private readonly object _lock = new object();
-    private readonly List<(Action<object?> callback, object? state)> _callbacks = new();
+    private readonly Dictionary<Guid, (Action<object?> callback, object? state)> _callbacks = new();
 
     public bool HasChanged => _hasChanged;
     public bool ActiveChangeCallbacks => true;
@@ -31,8 +33,9 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
         string containerName,
         string blobPath,
         TimeSpan debounceDelay,
-        bool useContentBasedDetection,
-        int maxContentHashSizeMb,
+        TimeSpan watchingInterval,
+        TimeSpan errorRetryDelay,
+        IChangeDetectionStrategy changeDetectionStrategy,
         ConcurrentDictionary<string, string> contentHashes,
         ConcurrentDictionary<string, Timer> debounceTimers,
         ILogger logger)
@@ -41,41 +44,68 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
         _containerName = containerName;
         _blobPath = blobPath;
         _debounceDelay = debounceDelay;
-        _useContentBasedDetection = useContentBasedDetection;
-        _maxContentHashSizeMb = maxContentHashSizeMb;
+        _watchingInterval = watchingInterval;
+        _errorRetryDelay = errorRetryDelay;
+        _changeDetectionStrategy = changeDetectionStrategy;
         _contentHashes = contentHashes;
         _debounceTimers = debounceTimers;
         _logger = logger;
         _cts = new CancellationTokenSource();
 
-        StartWatching();
+        _watchingTask = StartWatching();
+        
+        // Ensure unobserved task exceptions are logged
+        _watchingTask.ContinueWith(task =>
+        {
+            if (task.IsFaulted && task.Exception != null)
+            {
+                _logger.LogError(task.Exception, "Unobserved exception in watching task for blob {BlobPath}", _blobPath);
+            }
+        }, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
     }
 
-    private void StartWatching()
+    private Task StartWatching()
     {
-        _ = Task.Run(async () =>
+        return Task.Run(async () =>
         {
-            while (!_cts.Token.IsCancellationRequested)
+            try
             {
-                try
+                while (!_cts.Token.IsCancellationRequested)
                 {
-                    var hasContentChanged = await CheckForContentChanges();
-                    if (hasContentChanged)
+                    try
                     {
-                        TriggerDebouncedChange();
-                    }
+                        var hasContentChanged = await CheckForContentChanges();
+                        if (hasContentChanged)
+                        {
+                            TriggerDebouncedChange();
+                        }
 
-                    await Task.Delay(TimeSpan.FromSeconds(30), _cts.Token);
+                        await Task.Delay(_watchingInterval, _cts.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Expected when cancellation is requested
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error while watching blob {BlobPath}", _blobPath);
+                        
+                        try
+                        {
+                            await Task.Delay(_errorRetryDelay, _cts.Token);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            // Expected when cancellation is requested during retry delay
+                            break;
+                        }
+                    }
                 }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Error while watching blob {BlobPath}", _blobPath);
-                    await Task.Delay(TimeSpan.FromMinutes(1), _cts.Token);
-                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unhandled exception in blob watching task for {BlobPath}", _blobPath);
             }
         }, _cts.Token);
     }
@@ -94,12 +124,7 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
                 return false;
             }
 
-            if (_useContentBasedDetection)
-            {
-                return await CheckContentHash(blobClient);
-            }
-
-            return await CheckETag(blobClient);
+            return await _changeDetectionStrategy.HasChangedAsync(blobClient, _blobPath, _contentHashes, _cts.Token);
         }
         catch (Exception ex)
         {
@@ -108,68 +133,30 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
         }
     }
 
-    private async Task<bool> CheckContentHash(BlobClient blobClient)
-    {
-        var properties = await blobClient.GetPropertiesAsync(cancellationToken: _cts.Token);
-        
-        // Skip large files for content hashing
-        if (properties.Value.ContentLength > _maxContentHashSizeMb * 1024 * 1024)
-        {
-            _logger.LogDebug("Blob {BlobPath} too large for content hashing, using ETag", _blobPath);
-            return await CheckETag(blobClient);
-        }
-
-        await using var stream = await blobClient.OpenReadAsync(cancellationToken: _cts.Token);
-        using var sha256 = SHA256.Create();
-        var hashBytes = await sha256.ComputeHashAsync(stream, _cts.Token);
-        var currentHash = Convert.ToBase64String(hashBytes);
-
-        var previousHash = _contentHashes.GetValueOrDefault(_blobPath);
-        if (currentHash != previousHash)
-        {
-            _contentHashes[_blobPath] = currentHash;
-            _logger.LogInformation("Content change detected for blob {BlobPath}. Hash changed from {OldHash} to {NewHash}",
-                _blobPath, previousHash?.Substring(0, 8) + "...", currentHash.Substring(0, 8) + "...");
-            return true;
-        }
-
-        return false;
-    }
-
-    private async Task<bool> CheckETag(BlobClient blobClient)
-    {
-        var properties = await blobClient.GetPropertiesAsync(cancellationToken: _cts.Token);
-        var currentETag = properties.Value.ETag.ToString();
-
-        var previousETag = _contentHashes.GetValueOrDefault($"{_blobPath}:etag");
-        if (currentETag != previousETag)
-        {
-            _contentHashes[$"{_blobPath}:etag"] = currentETag;
-            _logger.LogInformation("ETag change detected for blob {BlobPath}. ETag changed from {OldETag} to {NewETag}",
-                _blobPath, previousETag, currentETag);
-            return true;
-        }
-
-        return false;
-    }
-
     private void TriggerDebouncedChange()
     {
+        if (_disposed) return; // Guard against disposal
+        
         lock (_lock)
         {
+            if (_disposed) return; // Double-check after acquiring lock
+            
             // Cancel existing timer
             if (_debounceTimers.TryRemove(_blobPath, out var existingTimer))
             {
-                existingTimer?.Dispose();
+                existingTimer.Dispose();
             }
 
             // Create new debounce timer
             var timer = new Timer(_ =>
             {
-                _hasChanged = true;
-                NotifyCallbacks();
-                _logger.LogInformation("Debounced change notification triggered for blob {BlobPath} after {Delay}s delay",
-                    _blobPath, _debounceDelay.TotalSeconds);
+                if (!_disposed)
+                {
+                    _hasChanged = true;
+                    NotifyCallbacks();
+                    _logger.LogInformation("Debounced change notification triggered for blob {BlobPath} after {Delay}s delay",
+                        _blobPath, _debounceDelay.TotalSeconds);
+                }
             }, null, _debounceDelay, Timeout.InfiniteTimeSpan);
 
             _debounceTimers[_blobPath] = timer;
@@ -181,10 +168,15 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
 
     private void NotifyCallbacks()
     {
+        if (_disposed) return; // Guard against disposal
+        
         lock (_lock)
         {
-            foreach (var (callback, state) in _callbacks)
+            if (_disposed) return; // Double-check after acquiring lock
+            
+            foreach (var kvp in _callbacks)
             {
+                var (callback, state) = kvp.Value;
                 try
                 {
                     callback(state);
@@ -199,14 +191,20 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
 
     public IDisposable RegisterChangeCallback(Action<object?> callback, object? state)
     {
+        if (_disposed) throw new ObjectDisposedException(nameof(EnhancedBlobChangeToken));
+        
         lock (_lock)
         {
-            _callbacks.Add((callback, state));
+            if (_disposed) throw new ObjectDisposedException(nameof(EnhancedBlobChangeToken));
+            
+            var callbackId = Guid.NewGuid();
+            _callbacks.Add(callbackId, (callback, state));
+            
             return new CallbackRegistration(() =>
             {
                 lock (_lock)
                 {
-                    _callbacks.Remove((callback, state));
+                    _callbacks.Remove(callbackId);
                 }
             });
         }
@@ -214,12 +212,50 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
 
     public void Dispose()
     {
-        _cts.Cancel();
-        _cts.Dispose();
-
-        if (_debounceTimers.TryRemove(_blobPath, out var timer))
+        if (_disposed) return; // Already disposed
+        
+        try
         {
-            timer.Dispose();
+            // Step 1: Set disposed flag to prevent new operations
+            _disposed = true;
+            
+            // Step 2: Cancel the token to signal background task to stop
+            _cts.Cancel();
+
+            // Step 3: Wait for the background task to complete (with timeout to prevent hanging)
+            try
+            {
+                _watchingTask.Wait(TimeSpan.FromSeconds(5));
+            }
+            catch (AggregateException ex) when (ex.InnerExceptions.All(e => e is OperationCanceledException))
+            {
+                // Expected - task was cancelled
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Exception while waiting for watching task to complete for blob {BlobPath}", _blobPath);
+            }
+
+            // Step 4: Clear all callbacks to prevent further notifications
+            lock (_lock)
+            {
+                _callbacks.Clear();
+            }
+
+            // Step 5: Dispose resources (timers)
+            if (_debounceTimers.TryRemove(_blobPath, out var timer))
+            {
+                timer.Dispose();
+            }
+
+            // Step 6: Dispose the CancellationTokenSource
+            _cts.Dispose();
+            
+            _logger.LogDebug("EnhancedBlobChangeToken disposed for blob {BlobPath}", _blobPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during disposal of EnhancedBlobChangeToken for blob {BlobPath}", _blobPath);
         }
     }
 
