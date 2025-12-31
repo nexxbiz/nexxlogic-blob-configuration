@@ -33,8 +33,15 @@ internal class ContentBasedChangeDetectionStrategy(ILogger logger, int maxConten
         if (currentHash != previousHash)
         {
             contentHashes[blobPath] = currentHash;
+
+            var oldHashDisplay = previousHash == null
+                ? "..."
+                : (previousHash.Length >= 8
+                    ? previousHash.Substring(0, 8) + "..."
+                    : previousHash);
+
             logger.LogInformation("Content change detected for blob {BlobPath}. Hash changed from {OldHash} to {NewHash}",
-                blobPath, previousHash?.Substring(0, 8) + "...", currentHash.Substring(0, 8) + "...");
+                blobPath, oldHashDisplay, currentHash.Substring(0, 8) + "...");
             return true;
         }
 
