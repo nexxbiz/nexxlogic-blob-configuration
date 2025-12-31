@@ -63,7 +63,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
         _watchTokenCache = new ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>>();
 
         // Create BlobServiceClient for enhanced change token if enhanced features are used
-        if (_changeDetectionStrategy != ChangeDetectionStrategy.ETag)
+        if (_changeDetectionStrategy == ChangeDetectionStrategy.ETag)
         {
             try
             {
