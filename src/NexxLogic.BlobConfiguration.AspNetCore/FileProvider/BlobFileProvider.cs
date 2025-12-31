@@ -162,8 +162,8 @@ public class BlobFileProvider : IFileProvider, IDisposable
                 _debounceTimers,
                 _logger);
 
-            // Cache the new token with weak reference
-            _watchTokenCache[blobPath] = new WeakReference<EnhancedBlobChangeToken>(newToken);
+            // Note: intentionally not caching the token with a weak reference, to avoid premature
+            // garbage collection of active tokens and potential orphaned timers/tasks.
             
             return newToken;
         }
