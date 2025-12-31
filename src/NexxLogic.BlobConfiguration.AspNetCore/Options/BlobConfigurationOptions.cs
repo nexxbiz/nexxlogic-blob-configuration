@@ -3,6 +3,7 @@
 public class BlobConfigurationOptions
 {
     public string ConnectionString { get; set; } = string.Empty;
+    public string ConnectionStringKey { get; set; } = "BlobStorage";
 
     /// <summary>
     /// Gets or sets the Blob Container URL. The URL must contain a SAS token with at least Read and List permissions.
@@ -14,7 +15,8 @@ public class BlobConfigurationOptions
 
     public string ContainerName { get; set; } = string.Empty;
     public string BlobName { get; set; } = string.Empty;
-    public string? Prefix { get; set; }
+    public string[] BlobNames { get; set; } = Array.Empty<string>();
+    public string? Prefix { get; set; } = "";
 
     public bool Optional { get; set; }
     public bool ReloadOnChange { get; set; }
@@ -23,4 +25,24 @@ public class BlobConfigurationOptions
     /// Reload interval in milliseconds
     /// </summary>
     public int ReloadInterval { get; set; } = 30_000;
+    
+    /// <summary>
+    /// Debounce delay in seconds to prevent rapid consecutive reloads
+    /// </summary>
+    public int DebounceDelaySeconds { get; set; } = 30;
+
+    /// <summary>
+    /// Use content-based change detection instead of just ETag/LastModified
+    /// </summary>
+    public bool UseContentBasedChangeDetection { get; set; } = true;
+
+    /// <summary>
+    /// Maximum file size in MB for content-based hash calculation
+    /// </summary>
+    public int MaxFileContentHashSizeMb { get; set; } = 1;
+
+    /// <summary>
+    /// Enable detailed logging for debugging configuration changes
+    /// </summary>
+    public bool EnableDetailedLogging { get; set; }
 }

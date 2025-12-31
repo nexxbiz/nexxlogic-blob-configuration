@@ -20,11 +20,21 @@ builder.Configuration.AddJsonBlob(config =>
     config.BlobName = "settings.json";
     config.ReloadOnChange = true;
     config.ReloadInterval = 10_000;
+    config.UseContentBasedChangeDetection = true;
+    config.DebounceDelaySeconds = 15;
+    config.MaxFileContentHashSizeMb = 2;
+    config.EnableDetailedLogging = true;
 }, logger);
+
 builder.Configuration.AddJsonBlob(config =>
 {
     builder.Configuration.GetSection("BlobConfiguration").Bind(config);
     config.BlobName = "Folder/settings.json";
+    
+    // Enhanced features for second blob
+    config.UseContentBasedChangeDetection = true;
+    config.DebounceDelaySeconds = 10;
+    config.EnableDetailedLogging = false;
 }, logger);
 builder.Services.Configure<ExampleOptions>(builder.Configuration.GetSection("ExampleSettings"));
 

@@ -4,16 +4,24 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
-using System.IO;
+using System.Collections.Concurrent;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 
-public class BlobFileProvider : IFileProvider
+public class BlobFileProvider : IFileProvider, IDisposable
 {
     private readonly IBlobClientFactory _blobClientFactory;
     private readonly IBlobContainerClientFactory _blobContainerClientFactory;
     private readonly BlobConfigurationOptions _blobConfig;
     private readonly ILogger<BlobFileProvider> _logger;
+    private readonly BlobServiceClient? _blobServiceClient;
+    private readonly TimeSpan _debounceDelay;
+    private readonly bool _useContentBasedDetection;
+    private readonly int _maxContentHashSizeMb;
+    private readonly bool _enableDetailedLogging;
+    private readonly ConcurrentDictionary<string, string> _contentHashes;
+    private readonly ConcurrentDictionary<string, Timer> _debounceTimers;
+    private volatile bool _disposed;
 
     private BlobChangeToken _changeToken = new();
     /// <summary>
@@ -40,6 +48,43 @@ public class BlobFileProvider : IFileProvider
         _blobConfig = blobConfig;
         _blobContainerClientFactory = blobContainerClientFactory;
         _logger = logger;
+
+        // Initialize enhanced options with defaults
+        _debounceDelay = TimeSpan.FromSeconds(_blobConfig.DebounceDelaySeconds);
+        _useContentBasedDetection = _blobConfig.UseContentBasedChangeDetection;
+        _maxContentHashSizeMb = _blobConfig.MaxFileContentHashSizeMb;
+        _enableDetailedLogging = _blobConfig.EnableDetailedLogging;
+        
+        _contentHashes = new ConcurrentDictionary<string, string>();
+        _debounceTimers = new ConcurrentDictionary<string, Timer>();
+
+        // Create BlobServiceClient for enhanced change token if enhanced features are used
+        if (_useContentBasedDetection)
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(_blobConfig.ConnectionString))
+                {
+                    _blobServiceClient = new BlobServiceClient(_blobConfig.ConnectionString);
+                }
+                else if (!string.IsNullOrEmpty(_blobConfig.BlobContainerUrl))
+                {
+                    var containerUri = new Uri(_blobConfig.BlobContainerUrl);
+                    var serviceUri = new Uri($"{containerUri.Scheme}://{containerUri.Host}");
+                    _blobServiceClient = new BlobServiceClient(serviceUri);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to create BlobServiceClient for enhanced features. Falling back to legacy mode.");
+            }
+        }
+
+        if (_enableDetailedLogging)
+        {
+            _logger.LogInformation("BlobFileProvider initialized with debounce: {Debounce}s, content-based detection: {ContentBased}",
+                _debounceDelay.TotalSeconds, _useContentBasedDetection);
+        }
     }
 
     public IFileInfo GetFileInfo(string subpath)
@@ -84,9 +129,49 @@ public class BlobFileProvider : IFileProvider
 
     public IChangeToken Watch(string filter)
     {
+        if (_disposed) throw new ObjectDisposedException(nameof(BlobFileProvider));
+
+        // Use enhanced change token if available, otherwise fall back to legacy implementation
+        if (_blobServiceClient != null && _useContentBasedDetection)
+        {
+            if (_enableDetailedLogging)
+            {
+                _logger.LogDebug("Creating enhanced watch token for filter: {Filter} with debounce: {Debounce}s", 
+                    filter, _debounceDelay.TotalSeconds);
+            }
+
+            var blobPath = GetBlobPath(filter);
+            
+            return new EnhancedBlobChangeToken(
+                _blobServiceClient,
+                _blobConfig.ContainerName,
+                blobPath,
+                _debounceDelay,
+                _useContentBasedDetection,
+                _maxContentHashSizeMb,
+                _contentHashes,
+                _debounceTimers,
+                _logger);
+        }
+
+        // Legacy implementation
         var client = _blobClientFactory.GetBlobClient(filter);
         _ = WatchBlobUpdate(client, _changeToken.CancellationToken);
         return _changeToken;
+    }
+
+    private string GetBlobPath(string filter)
+    {
+        // Remove leading slash if present
+        filter = filter.TrimStart('/');
+        
+        // Combine with prefix if configured
+        if (!string.IsNullOrEmpty(_blobConfig.Prefix))
+        {
+            return $"{_blobConfig.Prefix.TrimEnd('/')}/{filter}";
+        }
+        
+        return filter;
     }
 
     private async Task WatchBlobUpdate(BlobClient blobClient, CancellationToken token)
@@ -154,5 +239,23 @@ public class BlobFileProvider : IFileProvider
         var previousToken = Interlocked.Exchange(ref _changeToken, new BlobChangeToken());
         _loadPending = true;
         previousToken.OnReload();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        // Dispose all active debounce timers
+        foreach (var timer in _debounceTimers.Values)
+        {
+            timer.Dispose();
+        }
+        _debounceTimers.Clear();
+
+        if (_enableDetailedLogging)
+        {
+            _logger.LogDebug("BlobFileProvider disposed");
+        }
     }
 }

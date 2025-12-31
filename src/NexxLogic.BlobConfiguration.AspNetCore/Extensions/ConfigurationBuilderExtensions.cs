@@ -54,10 +54,16 @@ public static class ConfigurationBuilderExtensions
                 {
                     BlobName = blobInfo.Name,
                     ConnectionString = options.ConnectionString,
+                    BlobContainerUrl = options.BlobContainerUrl,
                     ContainerName = options.ContainerName,
                     Optional = options.Optional,
                     ReloadInterval = options.ReloadInterval,
                     ReloadOnChange = options.ReloadOnChange,
+                    // Enhanced properties
+                    DebounceDelaySeconds = options.DebounceDelaySeconds,
+                    UseContentBasedChangeDetection = options.UseContentBasedChangeDetection,
+                    MaxFileContentHashSizeMb = options.MaxFileContentHashSizeMb,
+                    EnableDetailedLogging = options.EnableDetailedLogging
                 };
 
                 source.FileProvider = new BlobFileProvider(
