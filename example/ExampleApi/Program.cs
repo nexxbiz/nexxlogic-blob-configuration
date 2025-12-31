@@ -19,11 +19,11 @@ builder.Configuration.AddJsonBlob(config =>
     builder.Configuration.GetSection("BlobConfiguration").Bind(config);
     config.BlobName = "settings.json";
     config.ReloadOnChange = true;
-    config.ReloadInterval = 10_000;
     
     config.ChangeDetectionStrategy = ChangeDetectionStrategy.ContentBased;
     config.DebounceDelaySeconds = 15;
     config.MaxFileContentHashSizeMb = 2;
+    // In enhanced mode, WatchingIntervalSeconds controls how often the blob is polled for changes
     config.WatchingIntervalSeconds = 20; // Poll every 20 seconds
     config.ErrorRetryDelaySeconds = 30; // Retry after 30 seconds on error
 }, logger);
