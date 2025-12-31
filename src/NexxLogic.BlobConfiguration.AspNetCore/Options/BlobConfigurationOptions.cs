@@ -5,6 +5,12 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.Options;
 public class BlobConfigurationOptions
 {
     public string ConnectionString { get; set; } = string.Empty;
+    /// <summary>
+    /// Gets or sets the configuration key used to retrieve the blob storage connection string.
+    /// </summary>
+    /// <value>
+    /// The configuration key name (for example, in appsettings or other configuration sources) that holds the blob storage connection string. Defaults to "BlobStorage".
+    /// </value>
     public string ConnectionStringKey { get; set; } = "BlobStorage";
 
     /// <summary>
