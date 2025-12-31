@@ -154,8 +154,6 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
     {
         lock (_lock)
         {
-            if (_disposed) return; // Double-check after acquiring lock
-            
             // Cancel existing timer
             if (_debounceTimers.TryRemove(_blobPath, out var existingTimer))
             {
