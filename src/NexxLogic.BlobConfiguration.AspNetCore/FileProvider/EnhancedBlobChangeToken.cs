@@ -133,10 +133,25 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
         }
     }
 
+    private async Task<bool> CheckETag(BlobClient blobClient)
+    {
+        var properties = await blobClient.GetPropertiesAsync(cancellationToken: _cts.Token);
+        var currentETag = properties.Value.ETag.ToString();
+
+        var previousETag = _contentHashes.GetValueOrDefault($"{_blobPath}:etag");
+        if (currentETag != previousETag)
+        {
+            _contentHashes[$"{_blobPath}:etag"] = currentETag;
+            _logger.LogInformation("ETag change detected for blob {BlobPath}. ETag changed from {OldETag} to {NewETag}",
+                _blobPath, previousETag, currentETag);
+            return true;
+        }
+
+        return false;
+    }
+
     private void TriggerDebouncedChange()
     {
-        if (_disposed) return; // Guard against disposal
-        
         lock (_lock)
         {
             if (_disposed) return; // Double-check after acquiring lock
