@@ -133,7 +133,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
         if (_disposed) throw new ObjectDisposedException(nameof(BlobFileProvider));
 
         // Use enhanced change token if available, otherwise fall back to legacy implementation
-        if (_blobServiceClient != null && _changeDetectionStrategy != ChangeDetectionStrategy.ETag)
+        if (_blobServiceClient != null)
         {
             var blobPath = GetBlobPath(filter);
             
