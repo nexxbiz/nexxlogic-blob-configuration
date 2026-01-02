@@ -14,10 +14,10 @@ internal class ETagChangeDetectionStrategy(ILogger logger) : IChangeDetectionStr
         var properties = await blobClient.GetPropertiesAsync(cancellationToken: cancellationToken);
         var currentETag = properties.Value.ETag.ToString();
 
-        var previousETag = contentHashes.GetValueOrDefault($"{blobPath}:etag");
+        var previousETag = contentHashes.GetValueOrDefault(blobPath);
         if (currentETag != previousETag)
         {
-            contentHashes[$"{blobPath}:etag"] = currentETag;
+            contentHashes[blobPath] = currentETag;
             logger.LogInformation("ETag change detected for blob {BlobPath}. ETag changed from {OldETag} to {NewETag}",
                 blobPath, previousETag, currentETag);
             return true;
