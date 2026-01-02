@@ -237,11 +237,11 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
                 _callbacks.Clear();
             }
 
-            // Step 5: Dispose resources (timers)
-            if (_debounceTimers.TryRemove(_blobPath, out var timer))
-            {
-                timer.Dispose();
-            }
+            // Step 5: Do not dispose or remove debounce timers here.
+            // Timers in _debounceTimers are shared across multiple EnhancedBlobChangeToken
+            // instances for the same blob path. Disposing or removing a shared timer from
+            // this instance could affect other active tokens, so timer lifecycle must be
+            // managed by the shared owner of _debounceTimers, not per-token.
 
             // Step 6: Dispose the CancellationTokenSource
             _cts.Dispose();
