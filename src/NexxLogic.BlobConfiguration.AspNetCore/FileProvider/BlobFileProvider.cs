@@ -249,20 +249,22 @@ public class BlobFileProvider : IFileProvider, IDisposable
 
     private void CleanupDeadReferences()
     {
-        // Only cleanup occasionally to avoid performance impact
-        if (_watchTokenCache.Count > 10) // Arbitrary threshold
+        // Clean up dead weak references on each call
+        if (_watchTokenCache.IsEmpty)
         {
-            // Explicitly filter dead references and remove them
-            var deadKeys = _watchTokenCache
-                .Where(kvp => !kvp.Value.TryGetTarget(out _))
-                .Select(kvp => kvp.Key)
-                .ToList();
+            return;
+        }
 
-            foreach (var key in deadKeys)
-            {
-                _watchTokenCache.TryRemove(key, out _);
-                _logger.LogDebug("Cleaned up dead watch token reference for blob path: {BlobPath}", key);
-            }
+        // Explicitly filter dead references and remove them
+        var deadKeys = _watchTokenCache
+            .Where(kvp => !kvp.Value.TryGetTarget(out _))
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        foreach (var key in deadKeys)
+        {
+            _watchTokenCache.TryRemove(key, out _);
+            _logger.LogDebug("Cleaned up dead watch token reference for blob path: {BlobPath}", key);
         }
     }
 
