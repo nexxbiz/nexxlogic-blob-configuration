@@ -26,7 +26,7 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
     private readonly Dictionary<Guid, (Action<object?> callback, object? state)> _callbacks = new();
 
     public bool HasChanged => _hasChanged;
-    public bool ActiveChangeCallbacks => true;
+    public bool ActiveChangeCallbacks => !_disposed;
 
     public EnhancedBlobChangeToken(
         BlobServiceClient blobServiceClient,
