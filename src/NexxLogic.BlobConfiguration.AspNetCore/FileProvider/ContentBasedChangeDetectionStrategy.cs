@@ -24,6 +24,15 @@ internal class ContentBasedChangeDetectionStrategy(ILogger logger, int maxConten
             return await fallbackStrategy.HasChangedAsync(blobClient, blobPath, contentHashes, cancellationToken);
         }
 
+        // Keep ETag-based state in sync even when using content hashing, so that
+        // switching between strategies does not lose change-detection history.
+        var etagKey = $"{blobPath}:etag";
+        var currentEtag = properties.Value.ETag.ToString();
+        var previousEtag = contentHashes.GetValueOrDefault(etagKey);
+        if (currentEtag != previousEtag)
+        {
+            contentHashes[etagKey] = currentEtag;
+        }
         await using var stream = await blobClient.OpenReadAsync(cancellationToken: cancellationToken);
         using var sha256 = SHA256.Create();
         var hashBytes = await sha256.ComputeHashAsync(stream, cancellationToken);
@@ -40,8 +49,12 @@ internal class ContentBasedChangeDetectionStrategy(ILogger logger, int maxConten
                     ? previousHash.Substring(0, 8) + "..."
                     : previousHash);
 
+            var newHashDisplay = currentHash.Length >= 8
+                ? currentHash.Substring(0, 8) + "..."
+                : currentHash;
+
             logger.LogInformation("Content change detected for blob {BlobPath}. Hash changed from {OldHash} to {NewHash}",
-                blobPath, oldHashDisplay, currentHash.Substring(0, 8) + "...");
+                blobPath, oldHashDisplay, newHashDisplay);
             return true;
         }
 
