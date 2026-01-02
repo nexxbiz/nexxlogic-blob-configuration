@@ -212,11 +212,11 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
         
         try
         {
-            // Step 1: Cancel the token to signal background task to stop
-            _cts.Cancel();
-
-            // Step 2: Set disposed flag to prevent new operations
+            // Step 1: Set disposed flag to prevent new operations
             _disposed = true;
+
+            // Step 2: Cancel the token to signal background task to stop
+            _cts.Cancel();
             // Step 3: Wait for the background task to complete (with timeout to prevent hanging)
             try
             {
