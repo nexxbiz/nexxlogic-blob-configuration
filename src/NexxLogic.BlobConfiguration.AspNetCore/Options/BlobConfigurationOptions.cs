@@ -25,7 +25,7 @@ public class BlobConfigurationOptions
     public string ContainerName { get; set; } = string.Empty;
     public string BlobName { get; set; } = string.Empty;
     public string[] BlobNames { get; set; } = Array.Empty<string>();
-    public string? Prefix { get; set; } = null!;
+    public string? Prefix { get; set; } = null;
 
     public bool Optional { get; set; }
     public bool ReloadOnChange { get; set; }
