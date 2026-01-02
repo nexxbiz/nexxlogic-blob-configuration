@@ -78,8 +78,19 @@ public class BlobFileProvider : IFileProvider, IDisposable
             else if (!string.IsNullOrEmpty(_blobConfig.BlobContainerUrl))
             {
                 var containerUri = new Uri(_blobConfig.BlobContainerUrl);
-                var serviceUri = new Uri($"{containerUri.Scheme}://{containerUri.Host}");
-                _blobServiceClient = new BlobServiceClient(serviceUri);
+
+                // Only create a BlobServiceClient when the container URL does not contain a SAS token (query string).
+                // If a SAS is present, using only scheme and host would create an unauthenticated client and break enhanced features.
+                if (string.IsNullOrEmpty(containerUri.Query))
+                {
+                    var serviceUri = new Uri($"{containerUri.Scheme}://{containerUri.Host}");
+                    _blobServiceClient = new BlobServiceClient(serviceUri);
+                }
+                else
+                {
+                    _logger.LogInformation(
+                        "BlobContainerUrl contains a SAS token; skipping BlobServiceClient creation for enhanced features. Falling back to legacy mode.");
+                }
             }
         }
         catch (Exception ex)
