@@ -95,32 +95,32 @@ public class BlobFileProvider : IFileProvider, IDisposable
     {
         var errors = new List<string>();
 
-        // Validate ReloadInterval (in milliseconds)
-        if (config.ReloadInterval < 1000 || config.ReloadInterval > 86400000)
+        // Validate ReloadInterval (in milliseconds) - allow small values for backward compatibility
+        if (config.ReloadInterval is < 1 or > 86400000)
         {
-            errors.Add($"ReloadInterval ({config.ReloadInterval}) must be between 1000 milliseconds (1 second) and 86400000 milliseconds (24 hours)");
+            errors.Add($"ReloadInterval ({config.ReloadInterval}) must be between 1 millisecond and 86400000 milliseconds (24 hours)");
         }
 
-        // Validate DebounceDelaySeconds
-        if (config.DebounceDelaySeconds < 1 || config.DebounceDelaySeconds > 3600)
+        // Validate DebounceDelaySeconds - allow small values for backward compatibility
+        if (config.DebounceDelaySeconds is < 0 or > 3600)
         {
-            errors.Add($"DebounceDelaySeconds ({config.DebounceDelaySeconds}) must be between 1 and 3600 seconds (1 hour)");
+            errors.Add($"DebounceDelaySeconds ({config.DebounceDelaySeconds}) must be between 0 and 3600 seconds (1 hour)");
         }
 
-        // Validate WatchingIntervalSeconds  
-        if (config.WatchingIntervalSeconds < 5 || config.WatchingIntervalSeconds > 86400)
+        // Validate WatchingIntervalSeconds - allow small values for backward compatibility
+        if (config.WatchingIntervalSeconds is < 1 or > 86400)
         {
-            errors.Add($"WatchingIntervalSeconds ({config.WatchingIntervalSeconds}) must be between 5 seconds and 86400 seconds (24 hours)");
+            errors.Add($"WatchingIntervalSeconds ({config.WatchingIntervalSeconds}) must be between 1 second and 86400 seconds (24 hours)");
         }
 
-        // Validate ErrorRetryDelaySeconds
-        if (config.ErrorRetryDelaySeconds < 5 || config.ErrorRetryDelaySeconds > 7200)
+        // Validate ErrorRetryDelaySeconds - allow small values for backward compatibility
+        if (config.ErrorRetryDelaySeconds is < 1 or > 7200)
         {
-            errors.Add($"ErrorRetryDelaySeconds ({config.ErrorRetryDelaySeconds}) must be between 5 seconds and 7200 seconds (2 hours)");
+            errors.Add($"ErrorRetryDelaySeconds ({config.ErrorRetryDelaySeconds}) must be between 1 second and 7200 seconds (2 hours)");
         }
 
         // Validate MaxFileContentHashSizeMb
-        if (config.MaxFileContentHashSizeMb < 1 || config.MaxFileContentHashSizeMb > 1024)
+        if (config.MaxFileContentHashSizeMb is < 1 or > 1024)
         {
             errors.Add($"MaxFileContentHashSizeMb ({config.MaxFileContentHashSizeMb}) must be between 1 and 1024 MB");
         }

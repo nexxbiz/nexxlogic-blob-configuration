@@ -33,13 +33,13 @@ public class BlobConfigurationOptions
     /// <summary>
     /// Reload interval in milliseconds
     /// </summary>
-    [Range(1000, 86400000, ErrorMessage = "ReloadInterval must be between 1000 milliseconds (1 second) and 86400000 milliseconds (24 hours)")]
+    [Range(1, 86400000, ErrorMessage = "ReloadInterval must be between 1 millisecond and 86400000 milliseconds (24 hours)")]
     public int ReloadInterval { get; set; } = 30_000;
     
     /// <summary>
     /// Debounce delay in seconds to prevent rapid consecutive reloads
     /// </summary>
-    [Range(1, 3600, ErrorMessage = "DebounceDelaySeconds must be between 1 and 3600 seconds (1 hour)")]
+    [Range(0, 3600, ErrorMessage = "DebounceDelaySeconds must be between 0 and 3600 seconds (1 hour). Use 0 to disable debouncing.")]
     public int DebounceDelaySeconds { get; set; } = 30;
 
     /// <summary>
@@ -56,12 +56,12 @@ public class BlobConfigurationOptions
     /// <summary>
     /// Interval in seconds for polling blob changes during watching
     /// </summary>
-    [Range(5, 86400, ErrorMessage = "WatchingIntervalSeconds must be between 5 seconds and 86400 seconds (24 hours)")]
+    [Range(1, 86400, ErrorMessage = "WatchingIntervalSeconds must be between 1 second and 86400 seconds (24 hours)")]
     public int WatchingIntervalSeconds { get; set; } = 30;
 
     /// <summary>
     /// Delay in seconds before retrying after an error during blob watching
     /// </summary>
-    [Range(5, 7200, ErrorMessage = "ErrorRetryDelaySeconds must be between 5 seconds and 7200 seconds (2 hours)")]
+    [Range(1, 7200, ErrorMessage = "ErrorRetryDelaySeconds must be between 1 second and 7200 seconds (2 hours)")]
     public int ErrorRetryDelaySeconds { get; set; } = 60;
 }
