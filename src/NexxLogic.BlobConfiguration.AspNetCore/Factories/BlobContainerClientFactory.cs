@@ -7,7 +7,7 @@ public class BlobContainerClientFactory(BlobConfigurationOptions blobConfig) : I
 {
     public BlobContainerClient GetBlobContainerClient()
     {
-        if(!string.IsNullOrWhiteSpace(blobConfig.BlobContainerUrl))
+        if (!string.IsNullOrWhiteSpace(blobConfig.BlobContainerUrl))
             return new(new(blobConfig.BlobContainerUrl));
 
         var serviceClient = GetBlobServiceClient();
