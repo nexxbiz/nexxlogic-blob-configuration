@@ -11,14 +11,7 @@ public class BlobConfigurationOptionsValidatorTests
     public void Validate_ShouldHaveError_WhenAnyBlobReferenceIsEmpty()
     {
         // Arrange
-        var blobConfig = new BlobConfigurationOptions
-        {
-            ConnectionString = "CONNECTION_STRING",
-            ContainerName = "CONTAINER_NAME",
-            BlobName = "BLOB_NAME",
-            ReloadOnChange = true,
-            ReloadInterval = 1
-        };
+        var blobConfig = CreateValidOptions(reloadOnChange: true, reloadInterval: 1);
         var sut = GetSut();
 
         // Act
@@ -28,19 +21,11 @@ public class BlobConfigurationOptionsValidatorTests
         result.ShouldHaveValidationErrorFor(b => b.ReloadInterval);
     }
 
-
     [Fact]
     public void Validate_ShouldNotHaveError_When_BlobNameRequired_And_BlobNameEmpty()
     {
         // Arrange
-        var blobConfig = new BlobConfigurationOptions
-        {
-            ConnectionString = "CONNECTION_STRING",
-            ContainerName = "CONTAINER_NAME",
-            BlobName = "",
-            ReloadOnChange = true,
-            ReloadInterval = 1
-        };
+        var blobConfig = CreateValidOptions(blobName: "", reloadOnChange: true, reloadInterval: 1);
         var sut = GetSut();
 
         // Act
@@ -50,146 +35,106 @@ public class BlobConfigurationOptionsValidatorTests
         result.ShouldNotHaveValidationErrorFor(b => b.BlobName);
     }
 
-    [Fact]
-    public void Validate_ShouldHaveError_WhenReloadIntervalIsTooLow_And_ReloadOnChange_EqualsTrue()
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void Validate_ReloadInterval_ShouldValidateBasedOnReloadOnChange(bool reloadOnChange, bool shouldHaveError)
     {
         // Arrange
-        var blobConfig = new BlobConfigurationOptions
-        {
-            ConnectionString = "conectionstring",
-            ContainerName = "container",
-            BlobName = "asd",
-            ReloadInterval = 1,
-            ReloadOnChange= true
-        };
-        var sut = GetSut();
+        var blobConfig = CreateValidOptions(reloadOnChange: reloadOnChange, reloadInterval: 1);
 
         // Act
-        var result = sut.TestValidate(blobConfig);
+        var result = GetSut().TestValidate(blobConfig);
 
         // Assert
-        result.ShouldHaveValidationErrorFor(b => b.ReloadInterval);
+        if (shouldHaveError)
+        {
+            result.ShouldHaveValidationErrorFor(b => b.ReloadInterval);
+        }
+        else
+        {
+            result.ShouldNotHaveValidationErrorFor(b => b.ReloadInterval);
+        }
     }
 
-    [Fact]
-    public void Validate_ShouldNotHaveError_WhenReloadIntervalIsTooLow_And_ReloadOnChange_EqualsFalse()
+    [Theory]
+    [InlineData("connection", "containerurl", null, "Cannot specify container url together with connection string or BlobServiceClientFactory. Please choose one.")]
+    [InlineData("", "", null, "Neither connection string, container url, nor BlobServiceClientFactory is specified. Please configure one.")]
+    [InlineData(null, "containerurl", true, "Cannot specify container url together with connection string or BlobServiceClientFactory. Please choose one.")]
+    public void Validate_ConnectionConfiguration_ShouldHaveError_WhenInvalidCombination(
+        string? connectionString,
+        string? containerUrl,
+        bool? hasFactory,
+        string expectedErrorMessage)
     {
         // Arrange
-        var blobConfig = new BlobConfigurationOptions
-        {
-            ConnectionString = "conectionstring",
-            ContainerName = "container",
-            BlobName = "asd",
-            ReloadInterval = 1,
-            ReloadOnChange = false
-        };
-        var sut = GetSut();
+        var blobConfig = CreateOptionsWithConnectionConfig(
+            connectionString,
+            containerUrl,
+            hasFactory == true ? CreateMockFactory() : null);
 
         // Act
-        var result = sut.TestValidate(blobConfig);
+        var result = GetSut().TestValidate(blobConfig);
 
         // Assert
-        result.ShouldNotHaveValidationErrorFor(b => b.ReloadInterval);
-    }
-
-
-    [Fact]
-    public void Validate_ShouldHaveError_When_BothConnectionString_And_ContainerUrl_AreSpecified()
-    {
-        // Arrange
-        var blobConfig = new BlobConfigurationOptions
-        {
-            ConnectionString = "something",
-            BlobContainerUrl = "containerurl",
-            ContainerName = "container",
-            BlobName = "blob"
-        };
-        var sut = GetSut();
-
-        // Act
-        var result = sut.TestValidate(blobConfig);
-
-        // Assert
-        result
-            .ShouldHaveValidationErrorFor("ConnectionString_BlobContainerUrl");
-
-        result.Errors
-            .Any(x => x.ErrorMessage ==
-                      "Cannot specify container url together with connection string or BlobServiceClientFactory. Please choose one.")
-            .Should()
-            .BeTrue();
-    }
-
-    [Fact]
-    public void Validate_ShouldHaveError_When_Both_ConnectionString_And_ContainerUrl_Are_Empty()
-    {
-        // Arrange
-        var blobConfig = new BlobConfigurationOptions
-        {
-            ConnectionString = "",
-            BlobContainerUrl = "",
-            ContainerName = "container",
-            BlobName = "blob"
-        };
-        var sut = GetSut();
-
-        // Act
-        var result = sut.TestValidate(blobConfig);
-
-        // Assert
-        result
-            .ShouldHaveValidationErrorFor("ConnectionString_BlobContainerUrl");
-
-        result.Errors
-            .Any(x => x.ErrorMessage ==
-                      "Neither connection string, container url, nor BlobServiceClientFactory is specified. Please configure one.")
-            .Should()
-            .BeTrue();
+        AssertConnectionConfigurationError(result, expectedErrorMessage);
     }
 
     [Fact]
     public void Validate_ShouldNotHaveError_When_BlobServiceClientFactory_IsSpecified_And_ConnectionString_And_ContainerUrl_Are_Empty()
     {
         // Arrange
-        var blobConfig = new BlobConfigurationOptions
-        {
-            BlobServiceClientFactory = () => throw new NotSupportedException("Factory should not be invoked during validation."),
-            ConnectionString = "",
-            BlobContainerUrl = "",
-            ContainerName = "container",
-            BlobName = "blob"
-        };
-        var sut = GetSut();
+        var blobConfig = CreateOptionsWithConnectionConfig("", "", CreateMockFactory());
 
         // Act
-        var result = sut.TestValidate(blobConfig);
+        var result = GetSut().TestValidate(blobConfig);
 
         // Assert
         result.ShouldNotHaveValidationErrorFor("ConnectionString_BlobContainerUrl");
     }
 
-    [Fact]
-    public void Validate_ShouldHaveError_When_BlobContainerUrl_And_BlobServiceClientFactory_AreSpecified()
+    private static BlobConfigurationOptions CreateValidOptions(
+        string connectionString = "CONNECTION_STRING",
+        string containerName = "CONTAINER_NAME",
+        string blobName = "BLOB_NAME",
+        bool? reloadOnChange = null,
+        int? reloadInterval = null)
     {
-        // Arrange
-        var blobConfig = new BlobConfigurationOptions
+        return new()
         {
-            BlobServiceClientFactory = () => throw new NotSupportedException(),
-            BlobContainerUrl = "containerurl",
+            ConnectionString = connectionString,
+            ContainerName = containerName,
+            BlobName = blobName,
+            ReloadOnChange = reloadOnChange ?? false,
+            ReloadInterval = reloadInterval ?? 0
+        };
+    }
+
+    private static BlobConfigurationOptions CreateOptionsWithConnectionConfig(
+        string? connectionString,
+        string? containerUrl,
+        Func<Azure.Storage.Blobs.BlobServiceClient>? factory)
+    {
+        return new()
+        {
+            ConnectionString = connectionString ?? string.Empty,
+            BlobContainerUrl = containerUrl ?? string.Empty,
+            BlobServiceClientFactory = factory,
             ContainerName = "container",
             BlobName = "blob"
         };
-        var sut = GetSut();
+    }
 
-        // Act
-        var result = sut.TestValidate(blobConfig);
+    private static Func<Azure.Storage.Blobs.BlobServiceClient> CreateMockFactory() =>
+        () => throw new NotSupportedException("Factory should not be invoked during validation.");
 
-        // Assert
+    private static void AssertConnectionConfigurationError(
+        TestValidationResult<BlobConfigurationOptions> result,
+        string expectedErrorMessage)
+    {
         result.ShouldHaveValidationErrorFor("ConnectionString_BlobContainerUrl");
-
         result.Errors
-            .Any(x => x.ErrorMessage ==
-                      "Cannot specify container url together with connection string or BlobServiceClientFactory. Please choose one.")
+            .Any(x => x.ErrorMessage == expectedErrorMessage)
             .Should()
             .BeTrue();
     }
