@@ -114,7 +114,8 @@ public class BlobConfigurationOptionsValidatorTests
             .ShouldHaveValidationErrorFor("ConnectionString_BlobContainerUrl");
 
         result.Errors
-            .Any(x => x.ErrorMessage == "Cannot specify both container url and connection string. Please choose one.")
+            .Any(x => x.ErrorMessage ==
+                      "Cannot specify container url together with connection string or BlobServiceClientFactory. Please choose one.")
             .Should()
             .BeTrue();
     }
@@ -140,7 +141,55 @@ public class BlobConfigurationOptionsValidatorTests
             .ShouldHaveValidationErrorFor("ConnectionString_BlobContainerUrl");
 
         result.Errors
-            .Any(x => x.ErrorMessage == "Neither connection string nor container url is specified. Please choose one.")
+            .Any(x => x.ErrorMessage ==
+                      "Neither connection string, container url, nor BlobServiceClientFactory is specified. Please configure one.")
+            .Should()
+            .BeTrue();
+    }
+
+    [Fact]
+    public void Validate_ShouldNotHaveError_When_BlobServiceClientFactory_IsSpecified_And_ConnectionString_And_ContainerUrl_Are_Empty()
+    {
+        // Arrange
+        var blobConfig = new BlobConfigurationOptions
+        {
+            BlobServiceClientFactory = () => throw new NotSupportedException("Factory should not be invoked during validation."),
+            ConnectionString = "",
+            BlobContainerUrl = "",
+            ContainerName = "container",
+            BlobName = "blob"
+        };
+        var sut = GetSut();
+
+        // Act
+        var result = sut.TestValidate(blobConfig);
+
+        // Assert
+        result.ShouldNotHaveValidationErrorFor("ConnectionString_BlobContainerUrl");
+    }
+
+    [Fact]
+    public void Validate_ShouldHaveError_When_BlobContainerUrl_And_BlobServiceClientFactory_AreSpecified()
+    {
+        // Arrange
+        var blobConfig = new BlobConfigurationOptions
+        {
+            BlobServiceClientFactory = () => throw new NotSupportedException(),
+            BlobContainerUrl = "containerurl",
+            ContainerName = "container",
+            BlobName = "blob"
+        };
+        var sut = GetSut();
+
+        // Act
+        var result = sut.TestValidate(blobConfig);
+
+        // Assert
+        result.ShouldHaveValidationErrorFor("ConnectionString_BlobContainerUrl");
+
+        result.Errors
+            .Any(x => x.ErrorMessage ==
+                      "Cannot specify container url together with connection string or BlobServiceClientFactory. Please choose one.")
             .Should()
             .BeTrue();
     }

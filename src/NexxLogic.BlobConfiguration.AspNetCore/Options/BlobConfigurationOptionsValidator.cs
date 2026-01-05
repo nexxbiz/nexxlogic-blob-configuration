@@ -13,9 +13,12 @@ internal class BlobConfigurationOptionsValidator : AbstractValidator<BlobConfigu
         RuleFor(options => options)
            .Must((options, _, context) =>
            {
-               if (!string.IsNullOrWhiteSpace(options.ConnectionString) && !string.IsNullOrWhiteSpace(options.BlobContainerUrl))
+               if (!string.IsNullOrWhiteSpace(options.BlobContainerUrl) &&
+                   (!string.IsNullOrWhiteSpace(options.ConnectionString) || options.BlobServiceClientFactory != null))
                {
-                   context.AddFailure("ConnectionString_BlobContainerUrl", "Cannot specify both container url and connection string. Please choose one.");
+                   context.AddFailure(
+                       "ConnectionString_BlobContainerUrl",
+                       "Cannot specify container url together with connection string or BlobServiceClientFactory. Please choose one.");
                    return false;
                }
                return true;
@@ -24,13 +27,17 @@ internal class BlobConfigurationOptionsValidator : AbstractValidator<BlobConfigu
         RuleFor(options => options)
            .Must((options, _, context) =>
            {
-               if (string.IsNullOrWhiteSpace(options.ConnectionString) && string.IsNullOrWhiteSpace(options.BlobContainerUrl))
+               if (string.IsNullOrWhiteSpace(options.ConnectionString) &&
+                   string.IsNullOrWhiteSpace(options.BlobContainerUrl) &&
+                   options.BlobServiceClientFactory == null)
                {
-                   context.AddFailure("ConnectionString_BlobContainerUrl", "Neither connection string nor container url is specified. Please choose one.");
+                   context.AddFailure(
+                       "ConnectionString_BlobContainerUrl",
+                       "Neither connection string, container url, nor BlobServiceClientFactory is specified. Please configure one.");
                    return false;
                }
                return true;
-           });       
+           });
 
 
         RuleFor(options => options.ContainerName).NotEmpty();

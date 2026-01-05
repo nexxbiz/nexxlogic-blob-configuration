@@ -38,7 +38,7 @@ public static class ConfigurationBuilderExtensions
         ILogger<BlobFileProvider> logger)
     {
         var options = new BlobConfigurationOptions();
-        configure?.Invoke(options);
+        configure.Invoke(options);
         new BlobConfigurationOptionsValidator().ValidateAndThrow(options);
 
         var blobContainerClientFactory = new BlobContainerClientFactory(options);
