@@ -93,6 +93,60 @@ public class BlobConfigurationOptionsValidatorTests
         result.ShouldNotHaveValidationErrorFor("ConnectionString_BlobContainerUrl");
     }
 
+    [Fact]
+    public void Validate_ContainerName_ShouldNotHaveError_When_BlobContainerUrl_IsSpecified()
+    {
+        // Arrange
+        var blobConfig = new BlobConfigurationOptions
+        {
+            BlobContainerUrl = "https://storageaccount.blob.core.windows.net/container?sas=token",
+            ContainerName = "", // Empty container name should be OK when using BlobContainerUrl
+            BlobName = "blob"
+        };
+
+        // Act
+        var result = GetSut().TestValidate(blobConfig);
+
+        // Assert
+        result.ShouldNotHaveValidationErrorFor(b => b.ContainerName);
+    }
+
+    [Fact]
+    public void Validate_ContainerName_ShouldHaveError_When_ConnectionString_IsSpecified_And_ContainerName_IsEmpty()
+    {
+        // Arrange
+        var blobConfig = new BlobConfigurationOptions
+        {
+            ConnectionString = "DefaultEndpointsProtocol=https;AccountName=test;AccountKey=key;EndpointSuffix=core.windows.net",
+            ContainerName = "", // Empty container name should fail when using ConnectionString
+            BlobName = "blob"
+        };
+
+        // Act
+        var result = GetSut().TestValidate(blobConfig);
+
+        // Assert
+        result.ShouldHaveValidationErrorFor(b => b.ContainerName);
+    }
+
+    [Fact]
+    public void Validate_ContainerName_ShouldHaveError_When_BlobServiceClientFactory_IsSpecified_And_ContainerName_IsEmpty()
+    {
+        // Arrange
+        var blobConfig = new BlobConfigurationOptions
+        {
+            BlobServiceClientFactory = CreateMockFactory(),
+            ContainerName = "", // Empty container name should fail when using BlobServiceClientFactory
+            BlobName = "blob"
+        };
+
+        // Act
+        var result = GetSut().TestValidate(blobConfig);
+
+        // Assert
+        result.ShouldHaveValidationErrorFor(b => b.ContainerName);
+    }
+
     private static BlobConfigurationOptions CreateValidOptions(
         string connectionString = "CONNECTION_STRING",
         string containerName = "CONTAINER_NAME",

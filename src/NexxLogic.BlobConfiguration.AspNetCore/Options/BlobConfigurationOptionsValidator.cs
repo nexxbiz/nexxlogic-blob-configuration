@@ -40,6 +40,10 @@ internal class BlobConfigurationOptionsValidator : AbstractValidator<BlobConfigu
            });
 
 
-        RuleFor(options => options.ContainerName).NotEmpty();
+        RuleFor(options => options.ContainerName)
+           .NotEmpty()
+           .When(options =>
+               string.IsNullOrWhiteSpace(options.BlobContainerUrl) &&
+               (!string.IsNullOrWhiteSpace(options.ConnectionString) || options.BlobServiceClientFactory != null));
     }
 }
