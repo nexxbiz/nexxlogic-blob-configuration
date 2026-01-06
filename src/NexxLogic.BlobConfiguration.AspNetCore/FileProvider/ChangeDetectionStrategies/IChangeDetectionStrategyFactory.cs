@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
-using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.Strategies;
 
-namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
+namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
 
 /// <summary>
 /// Factory for creating change detection strategies based on configuration and context

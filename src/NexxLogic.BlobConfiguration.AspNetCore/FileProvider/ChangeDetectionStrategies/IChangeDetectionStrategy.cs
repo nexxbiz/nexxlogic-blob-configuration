@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using Azure.Storage.Blobs;
 
-namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider.Strategies;
+namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
 
 /// <summary>
 /// Interface for implementing different blob change detection strategies

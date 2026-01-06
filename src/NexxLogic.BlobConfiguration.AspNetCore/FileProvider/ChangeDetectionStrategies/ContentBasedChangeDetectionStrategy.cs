@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using Azure.Storage.Blobs;
 using Microsoft.Extensions.Logging;
 
-namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider.Strategies;
+namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
 
 /// <summary>
 /// Content-based change detection strategy using SHA256 hashing (accurate, content-based)

@@ -6,7 +6,7 @@ using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
 using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
-using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.Strategies;
+using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 

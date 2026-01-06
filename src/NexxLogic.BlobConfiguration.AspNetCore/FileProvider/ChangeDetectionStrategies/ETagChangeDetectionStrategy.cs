@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using Azure.Storage.Blobs;
 using Microsoft.Extensions.Logging;
 
-namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider.Strategies;
+namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
 
 /// <summary>
 /// ETag-based change detection strategy (lightweight, metadata-based)

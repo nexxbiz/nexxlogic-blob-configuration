@@ -2,11 +2,11 @@ using Azure.Storage.Blobs;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using System.Collections.Concurrent;
-using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.Strategies;
+using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 
-internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
+internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDisposable
 {
     private readonly BlobServiceClient _blobServiceClient;
     private readonly string _containerName;
@@ -280,51 +280,74 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
         }
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         if (_disposed) return; // Already disposed
         
         try
         {
-            // Step 1: Set disposed flag to prevent new operations
             _disposed = true;
-
-            // Step 2: Cancel the token to signal background task to stop
+            
             _cts.Cancel();
-            // Step 3: Wait for the background task to complete (with timeout to prevent hanging)
+            
             try
             {
-                _watchingTask.Wait(TimeSpan.FromSeconds(5));
+                await _watchingTask.WaitAsync(TimeSpan.FromSeconds(5));
             }
-            catch (AggregateException ex) when (ex.InnerExceptions.All(e => e is OperationCanceledException))
+            catch (OperationCanceledException)
             {
                 // Expected - task was cancelled
+            }
+            catch (TimeoutException)
+            {
+                _logger.LogWarning("Timeout while waiting for watching task to complete for blob {BlobPath}", _blobPath);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Exception while waiting for watching task to complete for blob {BlobPath}", _blobPath);
             }
-
-            // Step 4: Clear all callbacks to prevent further notifications
+            
             lock (_lock)
             {
                 _callbacks.Clear();
             }
-
-            // Step 5: Do not dispose or remove debounce timers here.
-            // Timers in _debounceTimers are shared across multiple EnhancedBlobChangeToken
-            // instances for the same blob path. Disposing or removing a shared timer from
-            // this instance could affect other active tokens, so timer lifecycle must be
-            // managed by the shared owner of _debounceTimers, not per-token.
-
-            // Step 6: Dispose the CancellationTokenSource
+            
             _cts.Dispose();
             
-            _logger.LogDebug("EnhancedBlobChangeToken disposed for blob {BlobPath}", _blobPath);
+            _logger.LogDebug("EnhancedBlobChangeToken disposed asynchronously for blob {BlobPath}", _blobPath);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during disposal of EnhancedBlobChangeToken for blob {BlobPath}", _blobPath);
+            _logger.LogError(ex, "Error during async disposal of EnhancedBlobChangeToken for blob {BlobPath}", _blobPath);
+        }
+    }
+
+    public void Dispose()
+    {
+        // Synchronous disposal for IDisposable compatibility
+        // This should ideally not be used in high-throughput scenarios
+        // Prefer DisposeAsync() when possible
+        if (_disposed) return;
+
+        try
+        {
+            // For synchronous disposal, we don't block on task completion
+            // Just signal cancellation and dispose resources immediately
+            _disposed = true;
+            _cts.Cancel();
+            
+            lock (_lock)
+            {
+                _callbacks.Clear();
+            }
+            
+            _cts.Dispose();
+            
+            _logger.LogDebug("EnhancedBlobChangeToken disposed synchronously for blob {BlobPath} (task may still be running)", _blobPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during synchronous disposal of EnhancedBlobChangeToken for blob {BlobPath}", _blobPath);
         }
     }
 

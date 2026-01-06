@@ -9,7 +9,6 @@ using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
 using NSubstitute;
 using System.Collections.Concurrent;
-using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.Strategies;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.Integration;
 

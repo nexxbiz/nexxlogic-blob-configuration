@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 using NSubstitute;
 using System.Collections.Concurrent;
-using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.Strategies;
+using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.FileProvider;
 

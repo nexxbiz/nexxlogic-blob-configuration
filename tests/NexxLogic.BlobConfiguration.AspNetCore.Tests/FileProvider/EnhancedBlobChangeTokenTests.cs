@@ -5,7 +5,7 @@ using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using System.Collections.Concurrent;
-using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.Strategies;
+using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.FileProvider;
 
@@ -305,5 +305,49 @@ public class EnhancedBlobChangeTokenTests
         strategy.HasChangedAsync(Arg.Any<BlobClient>(), Arg.Any<string>(), Arg.Any<ConcurrentDictionary<string, string>>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("Simulated strategy failure"));
         return strategy;
+    }
+
+    [Fact]
+    public async Task EnhancedBlobChangeToken_ShouldDisposeAsync_WithoutBlocking()
+    {
+        // Arrange
+        var token = CreateToken();
+        var registration = token.RegisterChangeCallback(_ => { }, null);
+        var startTime = DateTime.UtcNow;
+
+        // Act
+        await using (token)
+        {
+            // Token should be alive here
+            Assert.True(token.ActiveChangeCallbacks);
+        }
+        // Token should be disposed here via async disposal
+
+        var endTime = DateTime.UtcNow;
+        var elapsedTime = endTime - startTime;
+
+        // Assert
+        // Disposal should complete quickly (much less than the 5-second timeout)
+        // This verifies we're not blocking on the background task completion
+        Assert.True(elapsedTime < TimeSpan.FromSeconds(1), 
+            $"Async disposal took {elapsedTime.TotalMilliseconds}ms, which suggests it may be blocking");
+        
+        // Cleanup
+        registration.Dispose();
+    }
+
+    [Fact]
+    public void EnhancedBlobChangeToken_ShouldSupportBothSyncAndAsyncDisposal()
+    {
+        // Arrange
+        var token1 = CreateToken();
+        var token2 = CreateToken();
+
+        // Act & Assert - Both disposal patterns should work
+        var syncException = Record.Exception(() => token1.Dispose());
+        Assert.Null(syncException);
+
+        var asyncException = Record.Exception(() => token2.DisposeAsync().GetAwaiter().GetResult());
+        Assert.Null(asyncException);
     }
 }
