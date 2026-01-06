@@ -350,4 +350,70 @@ public class EnhancedBlobChangeTokenTests
         var asyncException = Record.Exception(() => token2.DisposeAsync().GetAwaiter().GetResult());
         Assert.Null(asyncException);
     }
+
+    [Fact]
+    public void EnhancedBlobChangeToken_ShouldAvoidDeadlocks_WhenCallbacksRegisterUnregister()
+    {
+        // Arrange
+        using var token = CreateToken();
+        var callbackExecuted = false;
+        IDisposable? secondRegistration = null;
+
+        // Act - Register a callback that tries to register another callback
+        // This tests that callback execution doesn't deadlock with the internal lock
+        var firstRegistration = token.RegisterChangeCallback(_ =>
+        {
+            callbackExecuted = true;
+            
+            // This should not deadlock - callback execution should be outside the lock
+            secondRegistration = token.RegisterChangeCallback(_ =>
+            {
+            }, null);
+            
+        }, null);
+
+        // Simulate a change notification by manually triggering callbacks
+        // (In real usage this would happen through the background watcher)
+        var notifyMethod = typeof(EnhancedBlobChangeToken)
+            .GetMethod("NotifyCallbacks", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        notifyMethod?.Invoke(token, null);
+
+        // Assert
+        Assert.True(callbackExecuted, "First callback should have executed");
+        Assert.NotNull(secondRegistration);
+        
+        // The second callback won't be executed in this test since we only triggered one notification,
+        // but the important thing is that registration didn't deadlock
+        
+        // Cleanup
+        firstRegistration.Dispose();
+        secondRegistration?.Dispose();
+    }
+
+    [Fact]
+    public void EnhancedBlobChangeToken_ShouldAvoidDeadlocks_WhenCallbacksUnregister()
+    {
+        // Arrange
+        using var token = CreateToken();
+        var callbackExecuted = false;
+        IDisposable? registration = null;
+
+        // Act - Register a callback that tries to unregister itself
+        registration = token.RegisterChangeCallback(_ =>
+        {
+            callbackExecuted = true;
+            
+            // This should not deadlock - callback execution should be outside the lock
+            registration?.Dispose();
+            
+        }, null);
+
+        // Simulate a change notification
+        var notifyMethod = typeof(EnhancedBlobChangeToken)
+            .GetMethod("NotifyCallbacks", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        notifyMethod?.Invoke(token, null);
+
+        // Assert
+        Assert.True(callbackExecuted, "Callback should have executed and self-unregistered without deadlock");
+    }
 }

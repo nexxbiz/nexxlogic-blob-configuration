@@ -240,21 +240,27 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
     {
         if (_disposed) return; // Guard against disposal
         
+        // Capture callbacks inside the lock to avoid modification during iteration
+        (Action<object?> callback, object? state)[] callbacksSnapshot;
+        
         lock (_lock)
         {
             if (_disposed) return; // Double-check after acquiring lock
             
-            foreach (var kvp in _callbacks)
+            // Take a snapshot of callbacks to execute outside the lock
+            callbacksSnapshot = _callbacks.Values.ToArray();
+        }
+        
+        // Execute callbacks outside the lock to prevent deadlocks
+        foreach (var (callback, state) in callbacksSnapshot)
+        {
+            try
             {
-                var (callback, state) = kvp.Value;
-                try
-                {
-                    callback(state);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error executing change callback for blob {BlobPath}", _blobPath);
-                }
+                callback(state);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error executing change callback for blob {BlobPath}", _blobPath);
             }
         }
     }
