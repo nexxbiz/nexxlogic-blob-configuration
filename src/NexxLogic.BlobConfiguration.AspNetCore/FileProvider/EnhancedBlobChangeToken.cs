@@ -259,26 +259,37 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
         }
     }
 
-    public IDisposable RegisterChangeCallback(Action<object?> callback, object? state)
+public IDisposable RegisterChangeCallback(Action<object?> callback, object? state)
+{
+    if (_disposed) throw new ObjectDisposedException(nameof(EnhancedBlobChangeToken));
+
+    bool invokeImmediately;
+    Guid callbackId;
+
+    lock (_lock)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(EnhancedBlobChangeToken));
-        
+        invokeImmediately = _hasChanged;
+
+        callbackId = Guid.NewGuid();
+        _callbacks.Add(callbackId, (callback, state));
+    }
+
+    if (invokeImmediately)
+    {
+        // invoke outside lock
+        callback(state);
+    }
+
+    return new CallbackRegistration(() =>
+    {
         lock (_lock)
         {
-            if (_disposed) throw new ObjectDisposedException(nameof(EnhancedBlobChangeToken));
-            
-            var callbackId = Guid.NewGuid();
-            _callbacks.Add(callbackId, (callback, state));
-            
-            return new CallbackRegistration(() =>
-            {
-                lock (_lock)
-                {
-                    _callbacks.Remove(callbackId);
-                }
-            });
+            _callbacks.Remove(callbackId);
         }
-    }
+    });
+}
+
 
     public async ValueTask DisposeAsync()
     {
