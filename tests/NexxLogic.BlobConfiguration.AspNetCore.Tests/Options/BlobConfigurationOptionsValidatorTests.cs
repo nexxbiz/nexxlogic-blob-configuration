@@ -1,14 +1,15 @@
-﻿using FluentValidation.TestHelper;
+﻿using System.ComponentModel.DataAnnotations;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.Options;
 
 public class BlobConfigurationOptionsValidatorTests
 {
-    private static BlobConfigurationOptionsValidator GetSut() => new();
+    private static ValidationContext CreateValidationContext(BlobConfigurationOptions options) 
+        => new(options);
 
     [Fact]
-    public void Validate_ShouldHaveError_WhenAnyBlobReferenceIsEmpty()
+    public void Validate_ShouldHaveError_WhenReloadIntervalIsTooLowWithReloadOnChange()
     {
         // Arrange
         var blobConfig = new BlobConfigurationOptions
@@ -17,131 +18,182 @@ public class BlobConfigurationOptionsValidatorTests
             ContainerName = "CONTAINER_NAME",
             BlobName = "BLOB_NAME",
             ReloadOnChange = true,
-            ReloadInterval = 1
+            ReloadInterval = 1000 // Less than 5000
         };
-        var sut = GetSut();
+        var validationContext = CreateValidationContext(blobConfig);
 
         // Act
-        var result = sut.TestValidate(blobConfig);
+        var result = BlobConfigurationOptionsValidator.ValidateOptions(blobConfig, validationContext);
 
         // Assert
-        result.ShouldHaveValidationErrorFor(b => b.ReloadInterval);
+        Assert.NotEqual(ValidationResult.Success, result);
+        Assert.NotNull(result?.ErrorMessage);
+        Assert.Contains("ReloadInterval must be at least 5000 milliseconds", result.ErrorMessage);
     }
 
-
     [Fact]
-    public void Validate_ShouldNotHaveError_When_BlobNameRequired_And_BlobNameEmpty()
+    public void Validate_ShouldSucceed_When_BlobNameIsEmpty_InBaseValidator()
     {
         // Arrange
         var blobConfig = new BlobConfigurationOptions
         {
             ConnectionString = "CONNECTION_STRING",
             ContainerName = "CONTAINER_NAME",
-            BlobName = "",
-            ReloadOnChange = true,
-            ReloadInterval = 1
+            BlobName = "", // Empty blob name is OK for base validator
+            ReloadOnChange = false,
+            ReloadInterval = 10000
         };
-        var sut = GetSut();
+        var validationContext = CreateValidationContext(blobConfig);
 
         // Act
-        var result = sut.TestValidate(blobConfig);
+        var result = BlobConfigurationOptionsValidator.ValidateOptions(blobConfig, validationContext);
 
         // Assert
-        result.ShouldNotHaveValidationErrorFor(b => b.BlobName);
+        Assert.Equal(ValidationResult.Success, result);
     }
 
     [Fact]
-    public void Validate_ShouldHaveError_WhenReloadIntervalIsTooLow_And_ReloadOnChange_EqualsTrue()
+    public void Validate_ShouldSucceed_WhenReloadIntervalIsLowAndReloadOnChangeIsFalse()
     {
         // Arrange
         var blobConfig = new BlobConfigurationOptions
         {
-            ConnectionString = "conectionstring",
+            ConnectionString = "connectionstring",
             ContainerName = "container",
             BlobName = "asd",
-            ReloadInterval = 1,
-            ReloadOnChange= true
-        };
-        var sut = GetSut();
-
-        // Act
-        var result = sut.TestValidate(blobConfig);
-
-        // Assert
-        result.ShouldHaveValidationErrorFor(b => b.ReloadInterval);
-    }
-
-    [Fact]
-    public void Validate_ShouldNotHaveError_WhenReloadIntervalIsTooLow_And_ReloadOnChange_EqualsFalse()
-    {
-        // Arrange
-        var blobConfig = new BlobConfigurationOptions
-        {
-            ConnectionString = "conectionstring",
-            ContainerName = "container",
-            BlobName = "asd",
-            ReloadInterval = 1,
+            ReloadInterval = 1000, // Low interval but ReloadOnChange is false
             ReloadOnChange = false
         };
-        var sut = GetSut();
+        var validationContext = CreateValidationContext(blobConfig);
 
         // Act
-        var result = sut.TestValidate(blobConfig);
+        var result = BlobConfigurationOptionsValidator.ValidateOptions(blobConfig, validationContext);
 
         // Assert
-        result.ShouldNotHaveValidationErrorFor(b => b.ReloadInterval);
+        Assert.Equal(ValidationResult.Success, result);
     }
 
-
     [Fact]
-    public void Validate_ShouldHaveError_When_BothConnectionString_And_ContainerUrl_AreSpecified()
+    public void Validate_ShouldHaveError_WhenBothConnectionStringAndBlobContainerUrlAreProvided()
     {
         // Arrange
         var blobConfig = new BlobConfigurationOptions
         {
-            ConnectionString = "something",
-            BlobContainerUrl = "containerurl",
+            ConnectionString = "connectionstring",
+            BlobContainerUrl = "https://test.blob.core.windows.net/container",
             ContainerName = "container",
-            BlobName = "blob"
+            BlobName = "blob",
+            ReloadInterval = 10000,
+            ReloadOnChange = false
         };
-        var sut = GetSut();
+        var validationContext = CreateValidationContext(blobConfig);
 
         // Act
-        var result = sut.TestValidate(blobConfig);
+        var result = BlobConfigurationOptionsValidator.ValidateOptions(blobConfig, validationContext);
 
         // Assert
-        result
-            .ShouldHaveValidationErrorFor("ConnectionString_BlobContainerUrl");
-
-        result.Errors
-            .Any(x => x.ErrorMessage == "Cannot specify both container url and connection string. Please choose one.")
-            .Should()
-            .BeTrue();
+        Assert.NotEqual(ValidationResult.Success, result);
+        Assert.NotNull(result.ErrorMessage);
+        Assert.Contains("Cannot specify both ConnectionString and BlobContainerUrl", result.ErrorMessage);
     }
 
     [Fact]
-    public void Validate_ShouldHaveError_When_Both_ConnectionString_And_ContainerUrl_Are_Empty()
+    public void Validate_ShouldHaveError_WhenNeitherConnectionStringNorBlobContainerUrlAreProvided()
     {
         // Arrange
         var blobConfig = new BlobConfigurationOptions
         {
-            ConnectionString = "",
-            BlobContainerUrl = "",
             ContainerName = "container",
-            BlobName = "blob"
+            BlobName = "blob",
+            ReloadInterval = 10000,
+            ReloadOnChange = false
         };
-        var sut = GetSut();
+        var validationContext = CreateValidationContext(blobConfig);
 
         // Act
-        var result = sut.TestValidate(blobConfig);
+        var result = BlobConfigurationOptionsValidator.ValidateOptions(blobConfig, validationContext);
 
         // Assert
-        result
-            .ShouldHaveValidationErrorFor("ConnectionString_BlobContainerUrl");
+        Assert.NotEqual(ValidationResult.Success, result);
+        Assert.NotNull(result.ErrorMessage);
+        Assert.Contains("Either ConnectionString or BlobContainerUrl must be specified", result.ErrorMessage);
+    }
 
-        result.Errors
-            .Any(x => x.ErrorMessage == "Neither connection string nor container url is specified. Please choose one.")
-            .Should()
-            .BeTrue();
+    [Fact]
+    public void Validate_ShouldHaveError_WhenContainerNameIsEmpty()
+    {
+        // Arrange
+        var blobConfig = new BlobConfigurationOptions
+        {
+            ConnectionString = "connectionstring",
+            ContainerName = "", // Empty container name
+            BlobName = "blob",
+            ReloadInterval = 10000,
+            ReloadOnChange = false
+        };
+        var validationContext = CreateValidationContext(blobConfig);
+
+        // Act
+        var result = BlobConfigurationOptionsValidator.ValidateOptions(blobConfig, validationContext);
+
+        // Assert
+        Assert.NotEqual(ValidationResult.Success, result);
+        Assert.NotNull(result.ErrorMessage);
+        Assert.Contains("ContainerName is required", result.ErrorMessage);
+    }
+
+    [Fact]
+    public void Validate_ShouldSucceed_WhenAllRequiredFieldsAreValid()
+    {
+        // Arrange
+        var blobConfig = new BlobConfigurationOptions
+        {
+            ConnectionString = "connectionstring",
+            ContainerName = "container",
+            BlobName = "blob",
+            ReloadInterval = 10000,
+            ReloadOnChange = false
+        };
+        var validationContext = CreateValidationContext(blobConfig);
+
+        // Act
+        var result = BlobConfigurationOptionsValidator.ValidateOptions(blobConfig, validationContext);
+
+        // Assert
+        Assert.Equal(ValidationResult.Success, result);
+    }
+
+    [Fact]
+    public void ValidateAndThrow_ShouldThrowArgumentException_WhenValidationFails()
+    {
+        // Arrange
+        var blobConfig = new BlobConfigurationOptions
+        {
+            // Missing required fields
+            ReloadInterval = 1000,
+            ReloadOnChange = true // This will trigger the reload interval validation
+        };
+
+        // Act & Assert
+        var exception = Assert.Throws<ArgumentException>(() => BlobConfigurationOptionsValidator.ValidateAndThrow(blobConfig));
+        Assert.Contains("Invalid BlobConfiguration values:", exception.Message);
+    }
+
+    [Fact]
+    public void ValidateAndThrow_ShouldNotThrow_WhenValidationSucceeds()
+    {
+        // Arrange
+        var blobConfig = new BlobConfigurationOptions
+        {
+            ConnectionString = "connectionstring",
+            ContainerName = "container",
+            BlobName = "blob",
+            ReloadInterval = 10000,
+            ReloadOnChange = false
+        };
+
+        // Act & Assert
+        var exception = Record.Exception(() => BlobConfigurationOptionsValidator.ValidateAndThrow(blobConfig));
+        Assert.Null(exception);
     }
 }

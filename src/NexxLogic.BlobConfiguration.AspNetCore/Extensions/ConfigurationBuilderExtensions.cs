@@ -1,5 +1,4 @@
-﻿using FluentValidation;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
@@ -14,16 +13,16 @@ public static class ConfigurationBuilderExtensions
         ILogger<BlobFileProvider> logger)
     {
         var options = new BlobConfigurationOptions();
-        configure?.Invoke(options);
-        new RequiredBlobNameBlobConfigurationOptionsValidator().ValidateAndThrow(options);
-        var blobContainerClientfactory = new BlobContainerClientFactory(options);
-        var blobClientfactory = new BlobClientFactory(blobContainerClientfactory);
+        configure(options);
+        RequiredBlobNameBlobConfigurationOptionsValidator.ValidateAndThrow(options);
+        var blobContainerClientFactory = new BlobContainerClientFactory(options);
+        var blobClientfactory = new BlobClientFactory(blobContainerClientFactory);
 
         return builder.AddJsonFile(source =>
         {
             source.FileProvider = new BlobFileProvider(
                 blobClientfactory,
-                blobContainerClientfactory, 
+                blobContainerClientFactory, 
                 options, 
                 logger
             );
@@ -38,8 +37,8 @@ public static class ConfigurationBuilderExtensions
         ILogger<BlobFileProvider> logger)
     {
         var options = new BlobConfigurationOptions();
-        configure?.Invoke(options);
-        new BlobConfigurationOptionsValidator().ValidateAndThrow(options);
+        configure(options);
+        BlobConfigurationOptionsValidator.ValidateAndThrow(options);
 
         var blobContainerClientfactory = new BlobContainerClientFactory(options);
         var blobClientfactory = new BlobClientFactory(blobContainerClientfactory);
@@ -61,7 +60,7 @@ public static class ConfigurationBuilderExtensions
                     ReloadOnChange = options.ReloadOnChange,
                     // Enhanced properties
                     DebounceDelaySeconds = options.DebounceDelaySeconds,
-                    ChangeDetectionStrategy = options.ChangeDetectionStrategy,
+
                     MaxFileContentHashSizeMb = options.MaxFileContentHashSizeMb,
                     WatchingIntervalSeconds = options.WatchingIntervalSeconds,
                     ErrorRetryDelaySeconds = options.ErrorRetryDelaySeconds

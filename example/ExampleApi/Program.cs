@@ -7,9 +7,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddEndpointsApiExplorer();
 
-var loggerFactory = LoggerFactory.Create(builder =>
+var loggerFactory = LoggerFactory.Create(b =>
 {
-    builder.AddConsole();
+    b.AddConsole();
 });
 
 var logger = loggerFactory.CreateLogger<BlobFileProvider>();
@@ -20,7 +20,8 @@ builder.Configuration.AddJsonBlob(config =>
     config.BlobName = "settings.json";
     config.ReloadOnChange = true;
     
-    config.ChangeDetectionStrategy = ChangeDetectionStrategy.ContentBased;
+    // Strategy selection is handled automatically
+    config.MaxFileContentHashSizeMb = 5;
     config.DebounceDelaySeconds = 15;
     config.MaxFileContentHashSizeMb = 2;
     // In enhanced mode, WatchingIntervalSeconds controls how often the blob is polled for changes
@@ -34,7 +35,8 @@ builder.Configuration.AddJsonBlob(config =>
     config.BlobName = "Folder/settings.json";
     
     // Enhanced features for second blob - using ETag for fast detection
-    config.ChangeDetectionStrategy = ChangeDetectionStrategy.ETag;
+    // Strategy selection is handled automatically
+    config.MaxFileContentHashSizeMb = 0; // This will cause factory to choose ETag strategy
     config.DebounceDelaySeconds = 10;
     config.WatchingIntervalSeconds = 60; // Poll every 60 seconds for less frequent checks
     config.ErrorRetryDelaySeconds = 120; // Longer retry delay for non-critical config

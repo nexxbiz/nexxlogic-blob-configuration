@@ -14,9 +14,9 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.FileProvider;
 
 public class BlobFileProviderTests
 {   
-    private const string BLOB_NAME = "settings.json";
-    private const int DEFAULT_CONTENT_LENGTH = 123;
-    private static readonly DateTimeOffset _defaultLastModified = new(2022, 12, 19, 1, 1, 1, default);      
+    private const string BlobName = "settings.json";
+    private const int DefaultContentLength = 123;
+    private static readonly DateTimeOffset DefaultLastModified = new(2022, 12, 19, 1, 1, 1, default);      
 
     [Fact]
     public void GetFileInfo_ShouldReturnCorrectFileInfo_WhenBlobExists()
@@ -25,16 +25,16 @@ public class BlobFileProviderTests
         var sut = CreateSut(out var blobClientMock);
         blobClientMock
             .Name
-            .Returns(BLOB_NAME);
+            .Returns(BlobName);
 
         // Act
-        var result = sut.GetFileInfo(BLOB_NAME);
+        var result = sut.GetFileInfo(BlobName);
 
         // Assert
-        result.Exists.Should().BeTrue();
-        result.LastModified.Should().Be(_defaultLastModified);
-        result.Length.Should().Be(DEFAULT_CONTENT_LENGTH);
-        result.Name.Should().Be(BLOB_NAME);
+        Assert.True(result.Exists);
+        Assert.Equal(DefaultLastModified, result.LastModified);
+        Assert.Equal(DefaultContentLength, result.Length);
+        Assert.Equal(BlobName, result.Name);
     }
 
     [Fact]
@@ -52,11 +52,11 @@ public class BlobFileProviderTests
             ));
 
         // Act
-        var result = sut.GetFileInfo(BLOB_NAME);
+        var result = sut.GetFileInfo(BlobName);
 
         // Assert
-        result.Exists.Should().BeFalse();
-        result.Name.Should().BeEmpty();
+        Assert.False(result.Exists);
+        Assert.Empty(result.Name);
     }
 
     [Fact]
@@ -64,23 +64,23 @@ public class BlobFileProviderTests
     {
         // Arrange
         var sut = CreateSut(out var blobClientMock);
-        sut.GetFileInfo(BLOB_NAME);
+        sut.GetFileInfo(BlobName);
 
         var blobProperties = BlobsModelFactory.BlobProperties(
-            lastModified: _defaultLastModified.Add(TimeSpan.FromSeconds(30)),
-            contentLength: DEFAULT_CONTENT_LENGTH
+            lastModified: DefaultLastModified.Add(TimeSpan.FromSeconds(30)),
+            contentLength: DefaultContentLength
         );
 
-        var changeToken = (BlobChangeToken)sut.Watch(BLOB_NAME);
+        var changeToken = (BlobChangeToken)sut.Watch(BlobName);
         blobClientMock
             .GetPropertiesAsync(null, changeToken.CancellationToken)
             .Returns(Response.FromValue(blobProperties, Substitute.For<Response>()));
 
         // Act
-        await Task.Delay(30);
+        await Task.Delay(500);
 
         // Assert
-        changeToken.HasChanged.Should().BeTrue();
+        Assert.True(changeToken.HasChanged);
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public class BlobFileProviderTests
     {
         // Act
         var sut = CreateSut(out var blobClientMock);
-        var changeToken = (BlobChangeToken)sut.Watch(BLOB_NAME);
+        var changeToken = (BlobChangeToken)sut.Watch(BlobName);
         await Task.Delay(20);
 
         // Assert
@@ -106,10 +106,10 @@ public class BlobFileProviderTests
             ReloadInterval = 100_000
         };
         var sut = CreateSut(out var blobClientMock, options);
-        sut.GetFileInfo(BLOB_NAME);        
+        sut.GetFileInfo(BlobName);        
 
         // Act
-        var changeToken = (BlobChangeToken)sut.Watch(BLOB_NAME);
+        var changeToken = (BlobChangeToken)sut.Watch(BlobName);
         await Task.Delay(10);
         changeToken.OnReload();
 
@@ -132,10 +132,10 @@ public class BlobFileProviderTests
                 BlobErrorCode.BlobNotFound.ToString(),
                 null
             ));
-        sut.GetFileInfo(BLOB_NAME);
+        sut.GetFileInfo(BlobName);
 
         // Act
-        var changeToken = (BlobChangeToken)sut.Watch(BLOB_NAME);
+        var changeToken = (BlobChangeToken)sut.Watch(BlobName);
         await Task.Delay(20);
 
         // Assert
@@ -163,10 +163,10 @@ public class BlobFileProviderTests
                 BlobErrorCode.BlobNotFound.ToString(),
                 null
             ));
-        sut.GetFileInfo(BLOB_NAME);
+        sut.GetFileInfo(BlobName);
 
         // Act
-        var changeToken = (BlobChangeToken)sut.Watch(BLOB_NAME);
+        var changeToken = (BlobChangeToken)sut.Watch(BlobName);
         await Task.Delay(100);
 
         // Assert
@@ -196,16 +196,16 @@ public class BlobFileProviderTests
                 BlobErrorCode.BlobNotFound.ToString(),
                 null
             ));
-        sut.GetFileInfo(BLOB_NAME);
+        sut.GetFileInfo(BlobName);
         
-        var changeToken = (BlobChangeToken)sut.Watch(BLOB_NAME);
+        var changeToken = (BlobChangeToken)sut.Watch(BlobName);
         await Task.Delay(20);
 
         // Pre-Assert
         blobClientMock
             .Received()
             .Exists(changeToken.CancellationToken);
-        changeToken.HasChanged.Should().BeFalse();
+        Assert.False(changeToken.HasChanged);
 
         // Act
         blobClientMock            
@@ -214,14 +214,14 @@ public class BlobFileProviderTests
         await Task.Delay(30); // making sure that exists method returns with a TRUE value
 
         // Assert
-        changeToken.HasChanged.Should().BeTrue();
+        Assert.True(changeToken.HasChanged);
     }
 
     static BlobFileProvider CreateSut(out BlobClient blobClientMock, BlobConfigurationOptions? options = null)
     {
         var blobProperties = BlobsModelFactory.BlobProperties(
-            lastModified: _defaultLastModified,
-            contentLength: DEFAULT_CONTENT_LENGTH
+            lastModified: DefaultLastModified,
+            contentLength: DefaultContentLength
         );
 
         blobClientMock = Substitute.For<BlobClient>();
@@ -231,7 +231,7 @@ public class BlobFileProviderTests
 
         var blobClientFactoryMock = Substitute.For<IBlobClientFactory>();
         blobClientFactoryMock
-            .GetBlobClient(BLOB_NAME)
+            .GetBlobClient(BlobName)
             .Returns(blobClientMock);
 
         var blobContainerClientMock = Substitute.For<BlobContainerClient>();

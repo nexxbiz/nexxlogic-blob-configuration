@@ -2,6 +2,7 @@ using Azure.Storage.Blobs;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using System.Collections.Concurrent;
+using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.Strategies;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 
@@ -57,7 +58,7 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
         // Ensure unobserved task exceptions are logged
         _watchingTask.ContinueWith(task =>
         {
-            if (task.IsFaulted && task.Exception != null)
+            if (task is { IsFaulted: true, Exception: not null })
             {
                 _logger.LogError(task.Exception, "Unobserved exception in watching task for blob {BlobPath}", _blobPath);
             }
@@ -112,6 +113,12 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
 
     private async Task<bool> CheckForContentChanges()
     {
+        // Early exit if disposed to avoid unnecessary work
+        if (_disposed || _cts.Token.IsCancellationRequested)
+        {
+            return false;
+        }
+        
         try
         {
             var blobClient = _blobServiceClient.GetBlobContainerClient(_containerName)
@@ -126,39 +133,106 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable
 
             return await _changeDetectionStrategy.HasChangedAsync(blobClient, _blobPath, _contentHashes, _cts.Token);
         }
+        catch (OperationCanceledException)
+        {
+            // Expected during disposal - don't log as warning
+            return false;
+        }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to check blob changes for {BlobPath}", _blobPath);
+            // Only log if we're not disposed - errors during disposal are expected
+            if (!_disposed && !_cts.Token.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex, "Failed to check blob changes for {BlobPath}", _blobPath);
+            }
             return false;
         }
     }
 
     private void TriggerDebouncedChange()
     {
+        if (_disposed) return; // Early exit if already disposed
+        
         lock (_lock)
         {
+            if (_disposed) return; // Double-check after acquiring lock
+            
             // Cancel existing timer
             if (_debounceTimers.TryRemove(_blobPath, out var existingTimer))
             {
                 existingTimer.Dispose();
             }
 
-            // Create new debounce timer
+            // Capture state at timer creation to avoid race conditions
+            var cancellationToken = _cts.Token;
+            var blobPath = _blobPath; // Capture to avoid potential closure issues
+            var debounceDelay = _debounceDelay;
+            
+            // Create wrapper for cleanup to avoid captured variable warnings
+            var disposables = new List<IDisposable>();
+            
             var timer = new Timer(_ =>
             {
-                if (!_disposed)
+                try
                 {
+                    // Check cancellation and disposal state
+                    if (cancellationToken.IsCancellationRequested || _disposed)
+                    {
+                        return;
+                    }
+
+                    // Execute the change notification
                     _hasChanged = true;
                     NotifyCallbacks();
                     _logger.LogInformation("Debounced change notification triggered for blob {BlobPath} after {Delay}s delay",
-                        _blobPath, _debounceDelay.TotalSeconds);
+                        blobPath, debounceDelay.TotalSeconds);
                 }
-            }, null, _debounceDelay, Timeout.InfiniteTimeSpan);
+                catch (Exception ex)
+                {
+                    // Only log errors if we're not in a cancelled/disposed state
+                    if (!cancellationToken.IsCancellationRequested && !_disposed)
+                    {
+                        _logger.LogError(ex, "Error in debounced change notification for blob {BlobPath}", blobPath);
+                    }
+                }
+                finally
+                {
+                    // Clean up all disposables
+                    foreach (var disposable in disposables)
+                    {
+                        try
+                        {
+                            disposable.Dispose();
+                        }
+                        catch
+                        {
+                            // Ignore cleanup errors during shutdown
+                        }
+                    }
+                }
+            }, null, debounceDelay, Timeout.InfiniteTimeSpan);
 
-            _debounceTimers[_blobPath] = timer;
+            // Register for cancellation to ensure timer is disposed when token is cancelled
+            var cancellationRegistration = cancellationToken.Register(() =>
+            {
+                try
+                {
+                    timer.Dispose();
+                }
+                catch
+                {
+                    // Ignore disposal errors during cancellation
+                }
+            });
+
+            // Add to disposables list for cleanup
+            disposables.Add(cancellationRegistration);
+            disposables.Add(timer);
+
+            _debounceTimers[blobPath] = timer;
             
             _logger.LogDebug("Change detected for blob {BlobPath}, starting {Delay}s debounce timer",
-                _blobPath, _debounceDelay.TotalSeconds);
+                blobPath, debounceDelay.TotalSeconds);
         }
     }
 

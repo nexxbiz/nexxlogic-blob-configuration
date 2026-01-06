@@ -5,6 +5,8 @@ using Microsoft.Extensions.Primitives;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
 using System.Collections.Concurrent;
+using System.ComponentModel.DataAnnotations;
+using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.Strategies;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 
@@ -18,12 +20,11 @@ public class BlobFileProvider : IFileProvider, IDisposable
     private readonly TimeSpan _debounceDelay;
     private readonly TimeSpan _watchingInterval;
     private readonly TimeSpan _errorRetryDelay;
-    private readonly ChangeDetectionStrategy _changeDetectionStrategy;
-    private readonly int _maxContentHashSizeMb;
+    private readonly IChangeDetectionStrategyFactory _strategyFactory;
     private readonly IChangeDetectionStrategy _changeDetectionStrategyInstance;
+    private readonly int _maxContentHashSizeMb;
     private readonly ConcurrentDictionary<string, string> _contentHashes;
     private readonly ConcurrentDictionary<string, Timer> _debounceTimers;
-    private readonly ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>> _watchTokenCache;
     private volatile bool _disposed;
 
     private BlobChangeToken _changeToken = new();
@@ -59,7 +60,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
         _debounceDelay = TimeSpan.FromSeconds(_blobConfig.DebounceDelaySeconds);
         _watchingInterval = TimeSpan.FromSeconds(_blobConfig.WatchingIntervalSeconds);
         _errorRetryDelay = TimeSpan.FromSeconds(_blobConfig.ErrorRetryDelaySeconds);
-        _changeDetectionStrategy = _blobConfig.ChangeDetectionStrategy;
+        _strategyFactory = new ChangeDetectionStrategyFactory(_blobConfig);
         _maxContentHashSizeMb = _blobConfig.MaxFileContentHashSizeMb;
         
         // Create the strategy instance once and reuse it
@@ -67,7 +68,6 @@ public class BlobFileProvider : IFileProvider, IDisposable
         
         _contentHashes = new ConcurrentDictionary<string, string>();
         _debounceTimers = new ConcurrentDictionary<string, Timer>();
-        _watchTokenCache = new ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>>();
         
         try
         {
@@ -99,47 +99,25 @@ public class BlobFileProvider : IFileProvider, IDisposable
         }
 
         _logger.LogDebug("BlobFileProvider initialized with debounce: {Debounce}s, strategy: {Strategy}",
-            _debounceDelay.TotalSeconds, _changeDetectionStrategy);
+            _debounceDelay.TotalSeconds, _strategyFactory.GetType().Name);
     }
 
     private static void ValidateConfiguration(BlobConfigurationOptions config)
     {
-        var errors = new List<string>();
-
-        // Validate ReloadInterval (in milliseconds) - allow small values for backward compatibility
-        if (config.ReloadInterval is < 1 or > 86400000)
+        // Use DataAnnotations validation to enforce Range attributes automatically
+        var validationContext = new ValidationContext(config);
+        var validationResults = new List<ValidationResult>();
+        
+        bool isValid = Validator.TryValidateObject(config, validationContext, validationResults, validateAllProperties: true);
+        
+        if (!isValid)
         {
-            errors.Add($"ReloadInterval ({config.ReloadInterval}) must be between 1 millisecond and 86400000 milliseconds (24 hours)");
-        }
-
-        // Validate DebounceDelaySeconds - allow small values for backward compatibility
-        if (config.DebounceDelaySeconds is < 0 or > 3600)
-        {
-            errors.Add($"DebounceDelaySeconds ({config.DebounceDelaySeconds}) must be between 0 and 3600 seconds (1 hour)");
-        }
-
-        // Validate WatchingIntervalSeconds - allow small values for backward compatibility
-        if (config.WatchingIntervalSeconds is < 1 or > 86400)
-        {
-            errors.Add($"WatchingIntervalSeconds ({config.WatchingIntervalSeconds}) must be between 1 second and 86400 seconds (24 hours)");
-        }
-
-        // Validate ErrorRetryDelaySeconds - allow small values for backward compatibility
-        if (config.ErrorRetryDelaySeconds is < 1 or > 7200)
-        {
-            errors.Add($"ErrorRetryDelaySeconds ({config.ErrorRetryDelaySeconds}) must be between 1 second and 7200 seconds (2 hours)");
-        }
-
-        // Validate MaxFileContentHashSizeMb
-        if (config.MaxFileContentHashSizeMb is < 1 or > 1024)
-        {
-            errors.Add($"MaxFileContentHashSizeMb ({config.MaxFileContentHashSizeMb}) must be between 1 and 1024 MB");
-        }
-
-        // Throw aggregate exception if any validation errors
-        if (errors.Count > 0)
-        {
-            var message = "Invalid BlobConfiguration values:" + Environment.NewLine + string.Join(Environment.NewLine, errors);
+            var errorMessages = validationResults
+                .Where(r => !string.IsNullOrEmpty(r.ErrorMessage))
+                .Select(r => r.ErrorMessage!)
+                .ToArray();
+            
+            var message = "Invalid BlobConfiguration values:" + Environment.NewLine + string.Join(Environment.NewLine, errorMessages);
             throw new ArgumentException(message, nameof(config));
         }
     }
@@ -193,17 +171,9 @@ public class BlobFileProvider : IFileProvider, IDisposable
         {
             var blobPath = GetBlobPath(filter);
             
-            // Try to get existing token from cache first
-            var cachedToken = GetOrCreateEnhancedToken(blobPath);
-            if (cachedToken != null)
-            {
-                _logger.LogDebug("Reusing cached enhanced watch token for blob path: {BlobPath}", blobPath);
-                return cachedToken;
-            }
-
             _logger.LogDebug("Creating new enhanced watch token for filter: {Filter} with strategy: {Strategy}", 
-                filter, _changeDetectionStrategy);
-
+                filter, _strategyFactory.GetType().Name);
+            
             var newToken = new EnhancedBlobChangeToken(
                 _blobServiceClient,
                 _blobConfig.ContainerName,
@@ -215,9 +185,6 @@ public class BlobFileProvider : IFileProvider, IDisposable
                 _contentHashes,
                 _debounceTimers,
                 _logger);
-
-            // Cache the new token with weak reference
-            _watchTokenCache[blobPath] = new WeakReference<EnhancedBlobChangeToken>(newToken);
             
             return newToken;
         }
@@ -230,54 +197,9 @@ public class BlobFileProvider : IFileProvider, IDisposable
 
     private IChangeDetectionStrategy CreateChangeDetectionStrategy()
     {
-        return _changeDetectionStrategy switch
-        {
-            ChangeDetectionStrategy.ContentBased => new ContentBasedChangeDetectionStrategy(_logger, _maxContentHashSizeMb),
-            _ => new ETagChangeDetectionStrategy(_logger)
-        };
+        return _strategyFactory.CreateStrategy(_logger, _maxContentHashSizeMb);
     }
 
-    private EnhancedBlobChangeToken? GetOrCreateEnhancedToken(string blobPath)
-    {
-        // Clean up dead weak references periodically
-        CleanupDeadReferences();
-
-        // Try to get existing live token
-        if (_watchTokenCache.TryGetValue(blobPath, out var weakRef) && 
-            weakRef.TryGetTarget(out var existingToken))
-        {
-            return existingToken;
-        }
-
-        // Remove dead reference if it exists
-        if (weakRef != null)
-        {
-            _watchTokenCache.TryRemove(blobPath, out _);
-        }
-
-        return null;
-    }
-
-    private void CleanupDeadReferences()
-    {
-        // Clean up dead weak references on each call
-        if (_watchTokenCache.IsEmpty)
-        {
-            return;
-        }
-
-        // Explicitly filter dead references and remove them
-        var deadKeys = _watchTokenCache
-            .Where(kvp => !kvp.Value.TryGetTarget(out _))
-            .Select(kvp => kvp.Key)
-            .ToList();
-
-        foreach (var key in deadKeys)
-        {
-            _watchTokenCache.TryRemove(key, out _);
-            _logger.LogDebug("Cleaned up dead watch token reference for blob path: {BlobPath}", key);
-        }
-    }
 
     private string GetBlobPath(string filter)
     {
@@ -375,22 +297,6 @@ public class BlobFileProvider : IFileProvider, IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        // Dispose all cached enhanced tokens
-        foreach (var kvp in _watchTokenCache)
-        {
-            if (kvp.Value.TryGetTarget(out var token))
-            {
-                try
-                {
-                    token.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Error disposing cached watch token for blob path: {BlobPath}", kvp.Key);
-                }
-            }
-        }
-        _watchTokenCache.Clear();
 
         // Cancel and dispose legacy change token to stop WatchBlobUpdate tasks
         try
