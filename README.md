@@ -36,7 +36,6 @@ builder.Configuration.AddJsonBlob(config =>
 // ✅ Production configuration
 builder.Configuration.AddJsonBlob(config => 
 {
-    config.ChangeDetectionStrategy = ChangeDetectionStrategy.ContentBased;
     config.DebounceDelaySeconds = 30;        // Recommended for production
     config.WatchingIntervalSeconds = 60;     // Balanced polling  
     config.ErrorRetryDelaySeconds = 120;     // Conservative retry
