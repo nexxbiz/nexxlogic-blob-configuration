@@ -25,6 +25,8 @@ public class BlobFileProvider : IFileProvider, IDisposable
     private readonly int _maxContentHashSizeMb;
     private readonly ConcurrentDictionary<string, string> _contentHashes;
     private readonly ConcurrentDictionary<string, Timer> _debounceTimers;
+    private readonly ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>> _tokenCache;
+    private readonly object _tokenCreationLock = new object();
     private volatile bool _disposed;
 
     private BlobChangeToken _changeToken = new();
@@ -68,6 +70,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
         
         _contentHashes = new ConcurrentDictionary<string, string>();
         _debounceTimers = new ConcurrentDictionary<string, Timer>();
+        _tokenCache = new ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>>();
         
         try
         {
@@ -164,29 +167,59 @@ public class BlobFileProvider : IFileProvider, IDisposable
 
     public IChangeToken Watch(string filter)
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(BlobFileProvider));
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(BlobFileProvider));
+        }
 
         // Use enhanced change token if available, otherwise fall back to legacy implementation
         if (_blobServiceClient != null)
         {
             var blobPath = GetBlobPath(filter);
             
-            _logger.LogDebug("Creating new enhanced watch token for filter: {Filter} with strategy: {Strategy}", 
-                filter, _strategyFactory.GetType().Name);
+            // Check cache first and reuse existing token if still alive
+            if (_tokenCache.TryGetValue(blobPath, out var weakRef) && weakRef.TryGetTarget(out var existingToken))
+            {
+                _logger.LogDebug("Reusing existing enhanced watch token for filter: {Filter}", filter);
+                return existingToken;
+            }
             
-            var newToken = new EnhancedBlobChangeToken(
-                _blobServiceClient,
-                _blobConfig.ContainerName,
-                blobPath,
-                _debounceDelay,
-                _watchingInterval,
-                _errorRetryDelay,
-                _changeDetectionStrategyInstance,
-                _contentHashes,
-                _debounceTimers,
-                _logger);
-            
-            return newToken;
+            // Use lock to prevent race condition when creating new tokens
+            lock (_tokenCreationLock)
+            {
+                // Double-check pattern: verify token wasn't created by another thread
+                if (_tokenCache.TryGetValue(blobPath, out weakRef) && weakRef.TryGetTarget(out existingToken))
+                {
+                    _logger.LogDebug("Found existing enhanced watch token created by another thread for filter: {Filter}", filter);
+                    return existingToken;
+                }
+                
+                _logger.LogDebug("Creating new enhanced watch token for filter: {Filter} with strategy: {Strategy}", 
+                    filter, _strategyFactory.GetType().Name);
+                
+                var newToken = new EnhancedBlobChangeToken(
+                    _blobServiceClient,
+                    _blobConfig.ContainerName,
+                    blobPath,
+                    _debounceDelay,
+                    _watchingInterval,
+                    _errorRetryDelay,
+                    _changeDetectionStrategyInstance,
+                    _contentHashes,
+                    _debounceTimers,
+                    _logger);
+                
+                // Cache the new token using WeakReference to avoid memory leaks
+                _tokenCache[blobPath] = new WeakReference<EnhancedBlobChangeToken>(newToken);
+                
+                // Clean up dead references periodically (simple cleanup strategy)
+                if (_tokenCache.Count > 100) // Arbitrary threshold
+                {
+                    CleanupDeadReferences();
+                }
+                
+                return newToken;
+            }
         }
 
         // Legacy implementation
@@ -289,6 +322,29 @@ public class BlobFileProvider : IFileProvider, IDisposable
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Error disposing previous change token during reload");
+        }
+    }
+
+    private void CleanupDeadReferences()
+    {
+        var keysToRemove = new List<string>();
+        
+        foreach (var kvp in _tokenCache)
+        {
+            if (!kvp.Value.TryGetTarget(out _))
+            {
+                keysToRemove.Add(kvp.Key);
+            }
+        }
+        
+        foreach (var key in keysToRemove)
+        {
+            _tokenCache.TryRemove(key, out _);
+        }
+        
+        if (keysToRemove.Count > 0)
+        {
+            _logger.LogDebug("Cleaned up {Count} dead token references", keysToRemove.Count);
         }
     }
 
