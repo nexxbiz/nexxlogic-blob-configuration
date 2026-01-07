@@ -328,11 +328,6 @@ public class BlobFileProviderTests
         // Let some tokens go out of scope and become eligible for GC
         var keepAliveTokens = tokens.Take(10).ToList();
         tokens.Clear(); // Remove references to most tokens
-        
-        // Force garbage collection to clean up weak references
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
 
         // Create one more token to potentially trigger cleanup
         var finalToken = provider.Watch("final.json");
