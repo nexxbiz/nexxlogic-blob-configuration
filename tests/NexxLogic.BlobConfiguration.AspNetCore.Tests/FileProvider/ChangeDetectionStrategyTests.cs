@@ -3,7 +3,6 @@ using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 using NSubstitute;
 using System.Collections.Concurrent;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
@@ -28,16 +27,32 @@ public class ChangeDetectionStrategyTests
         var cancellationToken = CancellationToken.None;
 
         // Setup first call
-        SetupBlobProperties(blobClient, new ETag($"\"{firstETag}\""), DateTime.UtcNow, 1024);
+        var firstProperties = BlobsModelFactory.BlobProperties(eTag: new ETag($"\"{firstETag}\""), lastModified: DateTime.UtcNow, contentLength: 1024);
+        var firstContext = new ChangeDetectionContext
+        {
+            BlobClient = blobClient,
+            BlobPath = BlobPath,
+            Properties = firstProperties,
+            BlobFingerprints = blobFingerprints,
+            CancellationToken = cancellationToken
+        };
         
         // Act - First call (should store initial ETag)
-        var firstResult = await strategy.HasChangedAsync(blobClient, BlobPath, blobFingerprints, cancellationToken);
+        var firstResult = await strategy.HasChangedAsync(firstContext);
 
         // Setup second call
-        SetupBlobProperties(blobClient, new ETag($"\"{secondETag}\""), DateTime.UtcNow, 1024);
+        var secondProperties = BlobsModelFactory.BlobProperties(eTag: new ETag($"\"{secondETag}\""), lastModified: DateTime.UtcNow, contentLength: 1024);
+        var secondContext = new ChangeDetectionContext
+        {
+            BlobClient = blobClient,
+            BlobPath = BlobPath,
+            Properties = secondProperties,
+            BlobFingerprints = blobFingerprints,
+            CancellationToken = cancellationToken
+        };
         
         // Act - Second call
-        var secondResult = await strategy.HasChangedAsync(blobClient, BlobPath, blobFingerprints, cancellationToken);
+        var secondResult = await strategy.HasChangedAsync(secondContext);
 
         // Assert
         Assert.True(firstResult); // First call always returns true (initial state)
@@ -50,26 +65,44 @@ public class ChangeDetectionStrategyTests
     public async Task ContentBasedChangeDetectionStrategy_ShouldDetectChange_BasedOnContentComparison(string firstContent, string secondContent, bool shouldDetectChange)
     {
         // Arrange
-        var strategy = new ContentBasedChangeDetectionStrategy(_contentLogger, 5);
+        var strategy = new ContentBasedChangeDetectionStrategy(_contentLogger);
         var blobFingerprints = new ConcurrentDictionary<string, string>();
         var blobClient = CreateMockBlobClient();
         var cancellationToken = CancellationToken.None;
 
         // Setup first content
         var content1 = System.Text.Encoding.UTF8.GetBytes(firstContent);
-        SetupBlobProperties(blobClient, new ETag("\"etag1\""), DateTime.UtcNow, content1.Length);
+        var firstProperties = BlobsModelFactory.BlobProperties(eTag: new ETag("\"etag1\""), lastModified: DateTime.UtcNow, contentLength: content1.Length);
         SetupBlobContentStream(blobClient, content1);
 
+        var firstContext = new ChangeDetectionContext
+        {
+            BlobClient = blobClient,
+            BlobPath = BlobPath,
+            Properties = firstProperties,
+            BlobFingerprints = blobFingerprints,
+            CancellationToken = cancellationToken
+        };
+
         // Act - First call
-        var firstResult = await strategy.HasChangedAsync(blobClient, BlobPath, blobFingerprints, cancellationToken);
+        var firstResult = await strategy.HasChangedAsync(firstContext);
 
         // Setup second content (same or different based on test case)
         var content2 = System.Text.Encoding.UTF8.GetBytes(secondContent);
-        SetupBlobProperties(blobClient, new ETag("\"etag2\""), DateTime.UtcNow, content2.Length);
+        var secondProperties = BlobsModelFactory.BlobProperties(eTag: new ETag("\"etag2\""), lastModified: DateTime.UtcNow, contentLength: content2.Length);
         SetupBlobContentStream(blobClient, content2);
 
+        var secondContext = new ChangeDetectionContext
+        {
+            BlobClient = blobClient,
+            BlobPath = BlobPath,
+            Properties = secondProperties,
+            BlobFingerprints = blobFingerprints,
+            CancellationToken = cancellationToken
+        };
+
         // Act - Second call
-        var secondResult = await strategy.HasChangedAsync(blobClient, BlobPath, blobFingerprints, cancellationToken);
+        var secondResult = await strategy.HasChangedAsync(secondContext);
 
         // Assert
         Assert.True(firstResult); // First call always returns true (initial state)
@@ -77,31 +110,52 @@ public class ChangeDetectionStrategyTests
     }
 
     [Fact]
-    public async Task ContentBasedChangeDetectionStrategy_ShouldFallbackToETag_WhenFileIsTooLarge()
+    public async Task SizeLimitedChangeDetectionDecorator_ShouldFallbackToETag_WhenFileIsTooLarge()
     {
         // Arrange
         var maxFileSizeMb = 1; // 1 MB limit
-        var strategy = new ContentBasedChangeDetectionStrategy(_contentLogger, maxFileSizeMb);
+        var contentStrategy = new ContentBasedChangeDetectionStrategy(_contentLogger);
+        var etagStrategy = new ETagChangeDetectionStrategy(_etagLogger);
+        var decorator = new SizeLimitedChangeDetectionDecorator(
+            contentStrategy, etagStrategy, maxFileSizeMb, _etagLogger);
+        
         var blobFingerprints = new ConcurrentDictionary<string, string>();
         var blobClient = CreateMockBlobClient();
         var cancellationToken = CancellationToken.None;
 
         // Setup large file (2 MB, exceeds 1 MB limit)
         const int largeSizeBytes = 2 * 1024 * 1024;
-        SetupBlobProperties(blobClient, new ETag("\"etag1\""), DateTime.UtcNow, largeSizeBytes);
+        var firstProperties = BlobsModelFactory.BlobProperties(eTag: new ETag("\"etag1\""), lastModified: DateTime.UtcNow, contentLength: largeSizeBytes);
 
-        // Act - First call
-        var firstResult = await strategy.HasChangedAsync(blobClient, BlobPath, blobFingerprints, cancellationToken);
+        var firstContext = new ChangeDetectionContext
+        {
+            BlobClient = blobClient,
+            BlobPath = BlobPath,
+            Properties = firstProperties,
+            BlobFingerprints = blobFingerprints,
+            CancellationToken = cancellationToken
+        };
+
+        // Act - First call (should use ETag fallback due to large size)
+        var firstResult = await decorator.HasChangedAsync(firstContext);
 
         // Setup different ETag for large file
-        SetupBlobProperties(blobClient, new ETag("\"etag2\""), DateTime.UtcNow, largeSizeBytes);
+        var secondProperties = BlobsModelFactory.BlobProperties(eTag: new ETag("\"etag2\""), lastModified: DateTime.UtcNow, contentLength: largeSizeBytes);
+        var secondContext = new ChangeDetectionContext
+        {
+            BlobClient = blobClient,
+            BlobPath = BlobPath,
+            Properties = secondProperties,
+            BlobFingerprints = blobFingerprints,
+            CancellationToken = cancellationToken
+        };
 
-        // Act - Second call (should use ETag fallback)
-        var secondResult = await strategy.HasChangedAsync(blobClient, BlobPath, blobFingerprints, cancellationToken);
+        // Act - Second call (should use ETag fallback and detect change)
+        var secondResult = await decorator.HasChangedAsync(secondContext);
 
         // Assert
-        Assert.True(firstResult); // First call always returns true
-        Assert.True(secondResult); // Should detect change via ETag fallback
+        Assert.True(firstResult); // First call always returns true (initial state)
+        Assert.True(secondResult); // Should detect ETag change via fallback strategy
     }
 
     [Theory]
@@ -112,19 +166,28 @@ public class ChangeDetectionStrategyTests
     {
         // Arrange
         var etagStrategy = new ETagChangeDetectionStrategy(_etagLogger);
-        var contentStrategy = new ContentBasedChangeDetectionStrategy(_contentLogger, 5);
+        var contentStrategy = new ContentBasedChangeDetectionStrategy(_contentLogger);
         var blobFingerprints = new ConcurrentDictionary<string, string>();
         var blobClient = CreateMockBlobClient();
         var cancellationToken = CancellationToken.None;
 
         // Setup blob
         var content = "{ \"test\": \"data\" }"u8.ToArray();
-        SetupBlobProperties(blobClient, new ETag("\"etag1\""), DateTime.UtcNow, content.Length);
+        var properties = BlobsModelFactory.BlobProperties(eTag: new ETag("\"etag1\""), lastModified: DateTime.UtcNow, contentLength: content.Length);
         SetupBlobContentStream(blobClient, content);
 
+        var context = new ChangeDetectionContext
+        {
+            BlobClient = blobClient,
+            BlobPath = blobPath,
+            Properties = properties,
+            BlobFingerprints = blobFingerprints,
+            CancellationToken = cancellationToken
+        };
+
         // Act
-        var etagResult = await etagStrategy.HasChangedAsync(blobClient, blobPath, blobFingerprints, cancellationToken);
-        var contentResult = await contentStrategy.HasChangedAsync(blobClient, blobPath, blobFingerprints, cancellationToken);
+        var etagResult = await etagStrategy.HasChangedAsync(context);
+        var contentResult = await contentStrategy.HasChangedAsync(context);
 
         // Assert
         Assert.True(etagResult);
@@ -136,16 +199,6 @@ public class ChangeDetectionStrategyTests
         return Substitute.For<BlobClient>();
     }
 
-    private static void SetupBlobProperties(BlobClient blobClient, ETag etag, DateTime lastModified, long contentLength)
-    {
-        var properties = BlobsModelFactory.BlobProperties(
-            lastModified: new DateTimeOffset(lastModified),
-            contentLength: contentLength,
-            eTag: etag);
-
-        blobClient.GetPropertiesAsync(Arg.Any<BlobRequestConditions>(), Arg.Any<CancellationToken>())
-            .Returns(Response.FromValue(properties, Substitute.For<Response>()));
-    }
 
     private static void SetupBlobContentStream(BlobClient blobClient, byte[] content)
     {

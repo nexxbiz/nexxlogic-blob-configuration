@@ -8,10 +8,9 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStr
 public interface IChangeDetectionStrategyFactory
 {
     /// <summary>
-    /// Creates the appropriate change detection strategy based on configuration and runtime context
+    /// Creates the appropriate change detection strategy based on configuration
     /// </summary>
     /// <param name="logger">Logger for the strategy</param>
-    /// <param name="maxContentHashSizeMb">Maximum file size for content hashing</param>
-    /// <returns>The most suitable change detection strategy for the current context</returns>
-    IChangeDetectionStrategy CreateStrategy(ILogger logger, int maxContentHashSizeMb);
+    /// <returns>The most suitable change detection strategy for the current configuration</returns>
+    IChangeDetectionStrategy CreateStrategy(ILogger logger);
 }

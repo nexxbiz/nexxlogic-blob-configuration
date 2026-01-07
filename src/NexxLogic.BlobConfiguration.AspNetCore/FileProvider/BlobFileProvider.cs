@@ -227,7 +227,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
 
     private IChangeDetectionStrategy CreateChangeDetectionStrategy()
     {
-        return _strategyFactory.CreateStrategy(_logger, _maxContentHashSizeMb);
+        return _strategyFactory.CreateStrategy(_logger);
     }
 
 

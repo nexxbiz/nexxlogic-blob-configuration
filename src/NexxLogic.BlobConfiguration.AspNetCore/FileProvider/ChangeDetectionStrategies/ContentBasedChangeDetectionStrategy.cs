@@ -1,6 +1,4 @@
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
-using Azure.Storage.Blobs;
 using Microsoft.Extensions.Logging;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
@@ -8,47 +6,35 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStr
 /// <summary>
 /// Content-based change detection strategy using SHA256 hashing (accurate, content-based)
 /// </summary>
-public class ContentBasedChangeDetectionStrategy(ILogger logger, int maxContentHashSizeMb) : IChangeDetectionStrategy
+public class ContentBasedChangeDetectionStrategy(ILogger logger) : IChangeDetectionStrategy
 {
-    public async Task<bool> HasChangedAsync(BlobClient blobClient, string blobPath, ConcurrentDictionary<string, string> blobFingerprints, CancellationToken cancellationToken)
+    public async Task<bool> HasChangedAsync(ChangeDetectionContext context)
     {
         try
         {
-            var properties = await blobClient.GetPropertiesAsync(cancellationToken: cancellationToken);
-            
-            // Skip large files for content hashing, fall back to ETag
-            if (properties.Value.ContentLength > maxContentHashSizeMb * 1024 * 1024)
-            {
-                logger.LogDebug("Blob {BlobPath} too large for content hashing, using ETag", blobPath);
-                
-                // Use ETag fallback logic directly
-                var fallbackStrategy = new ETagChangeDetectionStrategy(logger);
-                return await fallbackStrategy.HasChangedAsync(blobClient, blobPath, blobFingerprints, cancellationToken);
-            }
-
             // Keep ETag-based state in sync even when using content hashing, so that
             // switching between strategies does not lose change-detection history.
-            var etagKey = $"{blobPath}:etag";
-            var currentEtag = properties.Value.ETag.ToString();
-            var previousEtag = blobFingerprints.GetValueOrDefault(etagKey);
+            var etagKey = $"{context.BlobPath}:etag";
+            var currentEtag = context.Properties.ETag.ToString();
+            var previousEtag = context.BlobFingerprints.GetValueOrDefault(etagKey);
             if (currentEtag != previousEtag)
             {
-                blobFingerprints[etagKey] = currentEtag;
+                context.BlobFingerprints[etagKey] = currentEtag;
             }
             
-            await using var stream = await blobClient.OpenReadAsync(cancellationToken: cancellationToken);
+            await using var stream = await context.BlobClient.OpenReadAsync(cancellationToken: context.CancellationToken);
             using var sha256 = SHA256.Create();
-            var hashBytes = await sha256.ComputeHashAsync(stream, cancellationToken);
+            var hashBytes = await sha256.ComputeHashAsync(stream, context.CancellationToken);
             var currentHash = Convert.ToBase64String(hashBytes);
 
-            var sha256Key = $"{blobPath}:sha256";
-            var previousHash = blobFingerprints.GetValueOrDefault(sha256Key);
+            var sha256Key = $"{context.BlobPath}:sha256";
+            var previousHash = context.BlobFingerprints.GetValueOrDefault(sha256Key);
             if (currentHash != previousHash)
             {
-                blobFingerprints[sha256Key] = currentHash;
+                context.BlobFingerprints[sha256Key] = currentHash;
 
                 var oldHashDisplay = previousHash == null
-                    ? "..."
+                    ? "null"
                     : (previousHash.Length >= 8
                         ? previousHash[..8] + "..."
                         : previousHash);
@@ -58,7 +44,7 @@ public class ContentBasedChangeDetectionStrategy(ILogger logger, int maxContentH
                     : currentHash;
 
                 logger.LogInformation("Content change detected for blob {BlobPath}. Hash changed from {OldHash} to {NewHash}",
-                    blobPath, oldHashDisplay, newHashDisplay);
+                    context.BlobPath, oldHashDisplay, newHashDisplay);
                 return true;
             }
 
@@ -66,7 +52,7 @@ public class ContentBasedChangeDetectionStrategy(ILogger logger, int maxContentH
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Failed to check content changes for blob {BlobPath}", blobPath);
+            logger.LogWarning(ex, "Failed to check content changes for blob {BlobPath}", context.BlobPath);
             return false;
         }
     }

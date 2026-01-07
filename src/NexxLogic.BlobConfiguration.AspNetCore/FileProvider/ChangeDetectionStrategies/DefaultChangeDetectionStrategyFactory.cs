@@ -11,23 +11,18 @@ public class ChangeDetectionStrategyFactory(BlobConfigurationOptions options) : 
 {
     private readonly BlobConfigurationOptions _options = options ?? throw new ArgumentNullException(nameof(options));
 
-    public IChangeDetectionStrategy CreateStrategy(ILogger logger, int maxContentHashSizeMb)
+    public IChangeDetectionStrategy CreateStrategy(ILogger logger)
     {
-        // Prefer content-based detection for accuracy when file sizes are reasonable
-        if (ShouldUseContentBasedDetection(maxContentHashSizeMb))
-        {
-            return new ContentBasedChangeDetectionStrategy(logger, maxContentHashSizeMb);
-        }
-        
-        // Fall back to ETag detection for performance or large files
-        return new ETagChangeDetectionStrategy(logger);
-    }
+        // Create primary and fallback strategies
+        var contentStrategy = new ContentBasedChangeDetectionStrategy(logger);
+        var etagStrategy = new ETagChangeDetectionStrategy(logger);
 
-    private static bool ShouldUseContentBasedDetection(int maxContentHashSizeMb)
-    {
-        // Smart decision logic - this is where the factory adds value
-        // Could be extended with additional criteria.
-
-        return maxContentHashSizeMb > 0;
+        // Use decorator pattern to handle size-based strategy selection
+        // This cleanly separates the concerns and eliminates tight coupling
+        return new SizeLimitedChangeDetectionDecorator(
+            primaryStrategy: contentStrategy,
+            fallbackStrategy: etagStrategy,
+            maxSizeMb: _options.MaxFileContentHashSizeMb,
+            logger: logger);
     }
 }

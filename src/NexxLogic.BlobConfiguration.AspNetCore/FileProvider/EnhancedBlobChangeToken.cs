@@ -129,7 +129,19 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
                 return false;
             }
 
-            var hasChanged = await _changeDetectionStrategy.HasChangedAsync(blobClient, _blobPath, _blobFingerprints, _cts.Token);
+            // Get blob properties once and pass them to the strategy via context
+            var properties = await blobClient.GetPropertiesAsync(cancellationToken: _cts.Token);
+            
+            var context = new ChangeDetectionContext
+            {
+                BlobClient = blobClient,
+                BlobPath = _blobPath,
+                Properties = properties.Value,
+                BlobFingerprints = _blobFingerprints,
+                CancellationToken = _cts.Token
+            };
+
+            var hasChanged = await _changeDetectionStrategy.HasChangedAsync(context);
             return hasChanged;
         }
         catch (OperationCanceledException)

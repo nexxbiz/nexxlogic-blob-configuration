@@ -48,7 +48,7 @@ public class EnhancedBlobChangeTokenTests
         for (var i = 0; i < callbackCount; i++)
         {
             Assert.NotNull(registrations[i]);
-            Assert.IsAssignableFrom<IDisposable>(registrations[i]);
+            Assert.IsType<IDisposable>(registrations[i], exactMatch: false);
             Assert.Equal(shouldExecuteImmediately, callbacksExecuted[i]);
         }
 
@@ -128,7 +128,7 @@ public class EnhancedBlobChangeTokenTests
         var blobServiceClient = CreateMockBlobServiceClient();
         var slowStrategy = CreateSlowStrategy();
 
-        using var token = new EnhancedBlobChangeToken(
+        await using var token = new EnhancedBlobChangeToken(
             blobServiceClient,
             ContainerName,
             BlobPath,
@@ -263,7 +263,7 @@ public class EnhancedBlobChangeTokenTests
             _logger);
     }
 
-    private BlobServiceClient CreateMockBlobServiceClient()
+    private static BlobServiceClient CreateMockBlobServiceClient()
     {
         var client = Substitute.For<BlobServiceClient>();
         var containerClient = Substitute.For<BlobContainerClient>();
@@ -275,31 +275,31 @@ public class EnhancedBlobChangeTokenTests
         return client;
     }
 
-    private IChangeDetectionStrategy CreateMockStrategy()
+    private static IChangeDetectionStrategy CreateMockStrategy()
     {
         var strategy = Substitute.For<IChangeDetectionStrategy>();
-        strategy.HasChangedAsync(Arg.Any<BlobClient>(), Arg.Any<string>(), Arg.Any<ConcurrentDictionary<string, string>>(), Arg.Any<CancellationToken>())
+        strategy.HasChangedAsync(Arg.Any<ChangeDetectionContext>())
             .Returns(false); // Default to no change detected
         return strategy;
     }
 
-    private IChangeDetectionStrategy CreateSlowStrategy()
+    private static IChangeDetectionStrategy CreateSlowStrategy()
     {
         var strategy = Substitute.For<IChangeDetectionStrategy>();
-        strategy.HasChangedAsync(Arg.Any<BlobClient>(), Arg.Any<string>(), Arg.Any<ConcurrentDictionary<string, string>>(), Arg.Any<CancellationToken>())
+        strategy.HasChangedAsync(Arg.Any<ChangeDetectionContext>())
             .Returns(async callInfo =>
             {
-                var token = callInfo.Arg<CancellationToken>();
-                await Task.Delay(1000, token); // Slow operation
+                var context = callInfo.Arg<ChangeDetectionContext>();
+                await Task.Delay(1000, context.CancellationToken); // Slow operation
                 return false;
             });
         return strategy;
     }
 
-    private IChangeDetectionStrategy CreateFaultyStrategy()
+    private static IChangeDetectionStrategy CreateFaultyStrategy()
     {
         var strategy = Substitute.For<IChangeDetectionStrategy>();
-        strategy.HasChangedAsync(Arg.Any<BlobClient>(), Arg.Any<string>(), Arg.Any<ConcurrentDictionary<string, string>>(), Arg.Any<CancellationToken>())
+        strategy.HasChangedAsync(Arg.Any<ChangeDetectionContext>())
             .ThrowsAsync(new InvalidOperationException("Simulated strategy failure"));
         return strategy;
     }
@@ -401,7 +401,7 @@ public class EnhancedBlobChangeTokenTests
         IDisposable? registration = null;
 
         // Act - Register a callback that tries to unregister itself
-        registration = token.RegisterChangeCallback(_ =>
+        token.RegisterChangeCallback(_ =>
         {
             callbackExecuted = true;
             
