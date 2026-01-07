@@ -324,15 +324,10 @@ public class BlobFileProvider : IFileProvider, IDisposable
 
     private void CleanupDeadReferences()
     {
-        var keysToRemove = new List<string>();
-        
-        foreach (var kvp in _tokenCache)
-        {
-            if (!kvp.Value.TryGetTarget(out _))
-            {
-                keysToRemove.Add(kvp.Key);
-            }
-        }
+        var keysToRemove = _tokenCache
+            .Where(kvp => !kvp.Value.TryGetTarget(out _))
+            .Select(kvp => kvp.Key)
+            .ToList();
         
         foreach (var key in keysToRemove)
         {
@@ -361,9 +356,46 @@ public class BlobFileProvider : IFileProvider, IDisposable
             _logger.LogWarning(ex, "Error disposing legacy change token");
         }
 
+        // Dispose all cached EnhancedBlobChangeToken instances to clean up their resources
+        DisposeEnhancedTokens();
 
         _logger.LogDebug("BlobFileProvider disposed");
         
         GC.SuppressFinalize(this);
+    }
+
+    private void DisposeEnhancedTokens()
+    {
+        var tokensToDispose = new List<EnhancedBlobChangeToken>();
+        
+        // Collect all live tokens from the cache
+        foreach (var kvp in _tokenCache)
+        {
+            if (kvp.Value.TryGetTarget(out var token))
+            {
+                tokensToDispose.Add(token);
+            }
+        }
+        
+        // Clear the cache immediately to prevent new references
+        _tokenCache.Clear();
+        
+        // Dispose all collected tokens
+        foreach (var token in tokensToDispose)
+        {
+            try
+            {
+                token.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error disposing enhanced change token during BlobFileProvider disposal");
+            }
+        }
+        
+        if (tokensToDispose.Count > 0)
+        {
+            _logger.LogDebug("Disposed {Count} cached enhanced change tokens", tokensToDispose.Count);
+        }
     }
 }

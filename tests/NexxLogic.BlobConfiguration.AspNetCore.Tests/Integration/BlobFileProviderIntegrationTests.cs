@@ -166,13 +166,17 @@ public class BlobFileProviderIntegrationTests
         // Arrange
         var options = CreateOptionsWithContentBasedStrategy();
         var provider = CreateBlobFileProvider(options);
-        var tokens = new List<IChangeToken>();
+        var createdTokens = new List<IChangeToken>();
 
         // Create multiple tokens to test resource cleanup
         for (var i = 0; i < 5; i++)
         {
-            tokens.Add(provider.Watch($"file{i}.json"));
+            createdTokens.Add(provider.Watch($"file{i}.json"));
         }
+
+        // Verify all tokens were created successfully
+        Assert.Equal(5, createdTokens.Count);
+        Assert.All(createdTokens, token => Assert.NotNull(token));
 
         // Act & Assert
         var exception = Record.Exception(() => provider.Dispose());
@@ -320,7 +324,9 @@ public class BlobFileProviderIntegrationTests
             .Returns(_ =>
             {
                 var content = contentChanged ? changedContent : initialContent;
-                return Task.FromResult<Stream>(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(content)));
+                var bytes = System.Text.Encoding.UTF8.GetBytes(content);
+                // Create a new MemoryStream for each call - it will be disposed by the consuming code
+                return Task.FromResult<Stream>(new MemoryStream(bytes) { Position = 0 });
             });
 
         // Return both the client and the trigger action

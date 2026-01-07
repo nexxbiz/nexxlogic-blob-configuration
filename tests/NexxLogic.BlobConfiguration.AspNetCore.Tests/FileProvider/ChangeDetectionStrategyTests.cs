@@ -202,8 +202,9 @@ public class ChangeDetectionStrategyTests
 
     private static void SetupBlobContentStream(BlobClient blobClient, byte[] content)
     {
-        // Return a fresh stream for each call to handle multiple reads
+        // Return a factory that creates a fresh stream for each call to handle multiple reads
+        // The stream will be disposed by the consuming code (ContentBasedChangeDetectionStrategy uses 'await using')
         blobClient.OpenReadAsync(Arg.Any<long>(), Arg.Any<int?>(), Arg.Any<BlobRequestConditions>(), Arg.Any<CancellationToken>())
-            .Returns(_ => Task.FromResult<Stream>(new MemoryStream(content)));
+            .Returns(_ => Task.FromResult<Stream>(new MemoryStream(content) { Position = 0 }));
     }
 }

@@ -222,33 +222,25 @@ public class BlobFileProviderTests
     {
         // Arrange
         var options = CreateOptionsWithConnectionString();
-        var provider = CreateBlobFileProvider(options);
-
-        var tasks = new List<Task<IChangeToken>>();
+        using var provider = CreateBlobFileProvider(options);
 
         // Act - Create multiple concurrent calls to Watch with the same filter
+        // Use Task.Run with immediate execution to avoid captured variable warnings
+        var watchTasks = new Task<IChangeToken>[10];
         for (int i = 0; i < 10; i++)
         {
-            var localProvider = provider; // Create local reference to avoid warning
-            tasks.Add(Task.Run(() => localProvider.Watch("config.json")));
+            watchTasks[i] = Task.Run(() => provider.Watch("config.json"));
         }
 
-        try
-        {
-            // Wait for all tasks to complete
-            var tokenResults = await Task.WhenAll(tasks);
+        // Wait for all tasks to complete before provider disposal
+        var tokenResults = await Task.WhenAll(watchTasks);
 
-            // Assert - All concurrent calls should return the same token instance (cached)
-            Assert.Equal(10, tokenResults.Length);
-            
-            // All tokens should be the same instance due to caching
-            var firstToken = tokenResults.First();
-            Assert.All(tokenResults, token => Assert.Same(firstToken, token));
-        }
-        finally
-        {
-            provider.Dispose();
-        }
+        // Assert - All concurrent calls should return the same token instance (cached)
+        Assert.Equal(10, tokenResults.Length);
+        
+        // All tokens should be the same instance due to caching
+        var firstToken = tokenResults.First();
+        Assert.All(tokenResults, token => Assert.Same(firstToken, token));
     }
 
     [Fact]

@@ -60,7 +60,6 @@ public static class ConfigurationBuilderExtensions
                     ReloadOnChange = options.ReloadOnChange,
                     // Enhanced properties
                     DebounceDelaySeconds = options.DebounceDelaySeconds,
-
                     MaxFileContentHashSizeMb = options.MaxFileContentHashSizeMb,
                     WatchingIntervalSeconds = options.WatchingIntervalSeconds,
                     ErrorRetryDelaySeconds = options.ErrorRetryDelaySeconds
