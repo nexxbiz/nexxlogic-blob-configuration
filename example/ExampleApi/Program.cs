@@ -35,7 +35,7 @@ builder.Configuration.AddJsonBlob(config =>
     
     // Enhanced features for second blob - using ETag for fast detection
     // Strategy selection is handled automatically
-    config.MaxFileContentHashSizeMb = 0; // This will cause factory to choose ETag strategy
+    config.MaxFileContentHashSizeMb = 1; // Use minimum valid value; strategy selection remains automatic
     config.DebounceDelaySeconds = 10;
     config.WatchingIntervalSeconds = 60; // Poll every 60 seconds for less frequent checks
     config.ErrorRetryDelaySeconds = 120; // Longer retry delay for non-critical config
