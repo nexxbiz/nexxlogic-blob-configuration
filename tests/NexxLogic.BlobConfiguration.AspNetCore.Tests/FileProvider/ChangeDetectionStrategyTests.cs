@@ -23,7 +23,7 @@ public class ChangeDetectionStrategyTests
     {
         // Arrange
         var strategy = new ETagChangeDetectionStrategy(_etagLogger);
-        var contentHashes = new ConcurrentDictionary<string, string>();
+        var blobFingerprints = new ConcurrentDictionary<string, string>();
         var blobClient = CreateMockBlobClient();
         var cancellationToken = CancellationToken.None;
 
@@ -31,13 +31,13 @@ public class ChangeDetectionStrategyTests
         SetupBlobProperties(blobClient, new ETag($"\"{firstETag}\""), DateTime.UtcNow, 1024);
         
         // Act - First call (should store initial ETag)
-        var firstResult = await strategy.HasChangedAsync(blobClient, BlobPath, contentHashes, cancellationToken);
+        var firstResult = await strategy.HasChangedAsync(blobClient, BlobPath, blobFingerprints, cancellationToken);
 
         // Setup second call
         SetupBlobProperties(blobClient, new ETag($"\"{secondETag}\""), DateTime.UtcNow, 1024);
         
         // Act - Second call
-        var secondResult = await strategy.HasChangedAsync(blobClient, BlobPath, contentHashes, cancellationToken);
+        var secondResult = await strategy.HasChangedAsync(blobClient, BlobPath, blobFingerprints, cancellationToken);
 
         // Assert
         Assert.True(firstResult); // First call always returns true (initial state)
@@ -51,7 +51,7 @@ public class ChangeDetectionStrategyTests
     {
         // Arrange
         var strategy = new ContentBasedChangeDetectionStrategy(_contentLogger, 5);
-        var contentHashes = new ConcurrentDictionary<string, string>();
+        var blobFingerprints = new ConcurrentDictionary<string, string>();
         var blobClient = CreateMockBlobClient();
         var cancellationToken = CancellationToken.None;
 
@@ -61,7 +61,7 @@ public class ChangeDetectionStrategyTests
         SetupBlobContentStream(blobClient, content1);
 
         // Act - First call
-        var firstResult = await strategy.HasChangedAsync(blobClient, BlobPath, contentHashes, cancellationToken);
+        var firstResult = await strategy.HasChangedAsync(blobClient, BlobPath, blobFingerprints, cancellationToken);
 
         // Setup second content (same or different based on test case)
         var content2 = System.Text.Encoding.UTF8.GetBytes(secondContent);
@@ -69,7 +69,7 @@ public class ChangeDetectionStrategyTests
         SetupBlobContentStream(blobClient, content2);
 
         // Act - Second call
-        var secondResult = await strategy.HasChangedAsync(blobClient, BlobPath, contentHashes, cancellationToken);
+        var secondResult = await strategy.HasChangedAsync(blobClient, BlobPath, blobFingerprints, cancellationToken);
 
         // Assert
         Assert.True(firstResult); // First call always returns true (initial state)
@@ -82,7 +82,7 @@ public class ChangeDetectionStrategyTests
         // Arrange
         var maxFileSizeMb = 1; // 1 MB limit
         var strategy = new ContentBasedChangeDetectionStrategy(_contentLogger, maxFileSizeMb);
-        var contentHashes = new ConcurrentDictionary<string, string>();
+        var blobFingerprints = new ConcurrentDictionary<string, string>();
         var blobClient = CreateMockBlobClient();
         var cancellationToken = CancellationToken.None;
 
@@ -91,13 +91,13 @@ public class ChangeDetectionStrategyTests
         SetupBlobProperties(blobClient, new ETag("\"etag1\""), DateTime.UtcNow, largeSizeBytes);
 
         // Act - First call
-        var firstResult = await strategy.HasChangedAsync(blobClient, BlobPath, contentHashes, cancellationToken);
+        var firstResult = await strategy.HasChangedAsync(blobClient, BlobPath, blobFingerprints, cancellationToken);
 
         // Setup different ETag for large file
         SetupBlobProperties(blobClient, new ETag("\"etag2\""), DateTime.UtcNow, largeSizeBytes);
 
         // Act - Second call (should use ETag fallback)
-        var secondResult = await strategy.HasChangedAsync(blobClient, BlobPath, contentHashes, cancellationToken);
+        var secondResult = await strategy.HasChangedAsync(blobClient, BlobPath, blobFingerprints, cancellationToken);
 
         // Assert
         Assert.True(firstResult); // First call always returns true
@@ -113,7 +113,7 @@ public class ChangeDetectionStrategyTests
         // Arrange
         var etagStrategy = new ETagChangeDetectionStrategy(_etagLogger);
         var contentStrategy = new ContentBasedChangeDetectionStrategy(_contentLogger, 5);
-        var contentHashes = new ConcurrentDictionary<string, string>();
+        var blobFingerprints = new ConcurrentDictionary<string, string>();
         var blobClient = CreateMockBlobClient();
         var cancellationToken = CancellationToken.None;
 
@@ -123,8 +123,8 @@ public class ChangeDetectionStrategyTests
         SetupBlobContentStream(blobClient, content);
 
         // Act
-        var etagResult = await etagStrategy.HasChangedAsync(blobClient, blobPath, contentHashes, cancellationToken);
-        var contentResult = await contentStrategy.HasChangedAsync(blobClient, blobPath, contentHashes, cancellationToken);
+        var etagResult = await etagStrategy.HasChangedAsync(blobClient, blobPath, blobFingerprints, cancellationToken);
+        var contentResult = await contentStrategy.HasChangedAsync(blobClient, blobPath, blobFingerprints, cancellationToken);
 
         // Assert
         Assert.True(etagResult);

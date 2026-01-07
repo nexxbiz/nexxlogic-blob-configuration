@@ -207,13 +207,13 @@ public class EnhancedBlobChangeTokenTests
     }
 
     [Fact]
-    public void EnhancedBlobChangeToken_ShouldShareContentHashes_BetweenInstances()
+    public void EnhancedBlobChangeToken_ShouldShareBlobFingerprints_BetweenInstances()
     {
-        // This tests that content hashes are shared between tokens (for caching efficiency)
+        // This tests that blob fingerprints (hashes, ETags, etc.) are shared between tokens (for caching efficiency)
         // while each token manages its own debounce timer independently
         
         // Arrange
-        var sharedContentHashes = new ConcurrentDictionary<string, string>();
+        var sharedBlobFingerprints = new ConcurrentDictionary<string, string>();
         var blobServiceClient = CreateMockBlobServiceClient();
         var strategy = CreateMockStrategy();
 
@@ -226,7 +226,7 @@ public class EnhancedBlobChangeTokenTests
             TimeSpan.FromSeconds(10),
             TimeSpan.FromSeconds(5),
             strategy,
-            sharedContentHashes,
+            sharedBlobFingerprints,
             _logger);
 
         using var token2 = new EnhancedBlobChangeToken(
@@ -237,7 +237,7 @@ public class EnhancedBlobChangeTokenTests
             TimeSpan.FromSeconds(10),
             TimeSpan.FromSeconds(5),
             strategy,
-            sharedContentHashes,
+            sharedBlobFingerprints,
             _logger);
 
         // Assert - Both tokens should be created successfully and share content hashes
@@ -245,7 +245,7 @@ public class EnhancedBlobChangeTokenTests
         Assert.NotNull(token2);
         Assert.NotSame(token1, token2);
         
-        // The shared content hash dictionary enables efficient caching across tokens
+        // The shared blob fingerprints dictionary enables efficient caching across tokens
         // Each token manages its own debounce timer independently for better isolation
     }
 

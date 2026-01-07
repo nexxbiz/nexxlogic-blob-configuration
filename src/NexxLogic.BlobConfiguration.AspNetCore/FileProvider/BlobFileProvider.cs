@@ -23,7 +23,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
     private readonly IChangeDetectionStrategyFactory _strategyFactory;
     private readonly IChangeDetectionStrategy _changeDetectionStrategyInstance;
     private readonly int _maxContentHashSizeMb;
-    private readonly ConcurrentDictionary<string, string> _contentHashes;
+    private readonly ConcurrentDictionary<string, string> _blobFingerprints;
     private readonly ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>> _tokenCache;
     private readonly object _tokenCreationLock = new object();
     private volatile bool _disposed;
@@ -67,7 +67,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
         // Create the strategy instance once and reuse it
         _changeDetectionStrategyInstance = CreateChangeDetectionStrategy();
         
-        _contentHashes = new ConcurrentDictionary<string, string>();
+        _blobFingerprints = new ConcurrentDictionary<string, string>();
         _tokenCache = new ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>>();
         
         try
@@ -203,7 +203,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
                     _watchingInterval,
                     _errorRetryDelay,
                     _changeDetectionStrategyInstance,
-                    _contentHashes,
+                    _blobFingerprints,
                     _logger);
                 
                 // Cache the new token using WeakReference to avoid memory leaks

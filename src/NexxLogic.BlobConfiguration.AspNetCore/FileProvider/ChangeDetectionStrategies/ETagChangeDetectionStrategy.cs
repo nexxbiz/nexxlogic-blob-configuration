@@ -9,19 +9,20 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStr
 /// </summary>
 public class ETagChangeDetectionStrategy(ILogger logger) : IChangeDetectionStrategy
 {
-    public async Task<bool> HasChangedAsync(BlobClient blobClient, string blobPath, ConcurrentDictionary<string, string> contentHashes, CancellationToken cancellationToken)
+    public async Task<bool> HasChangedAsync(BlobClient blobClient, string blobPath, ConcurrentDictionary<string, string> blobFingerprints, CancellationToken cancellationToken)
     {
         try
         {
             var properties = await blobClient.GetPropertiesAsync(cancellationToken: cancellationToken);
             var currentETag = properties.Value.ETag.ToString();
 
-            var previousETag = contentHashes.GetValueOrDefault(blobPath);
+            var etagKey = $"{blobPath}:etag";
+            var previousETag = blobFingerprints.GetValueOrDefault(etagKey);
             if (currentETag != previousETag)
             {
-                contentHashes[blobPath] = currentETag;
+                blobFingerprints[etagKey] = currentETag;
                 logger.LogInformation("ETag change detected for blob {BlobPath}. ETag changed from {OldETag} to {NewETag}",
-                    blobPath, previousETag, currentETag);
+                    blobPath, previousETag ?? "null", currentETag);
                 return true;
             }
 

@@ -15,7 +15,7 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
     private readonly TimeSpan _watchingInterval;
     private readonly TimeSpan _errorRetryDelay;
     private readonly IChangeDetectionStrategy _changeDetectionStrategy;
-    private readonly ConcurrentDictionary<string, string> _contentHashes;
+    private readonly ConcurrentDictionary<string, string> _blobFingerprints;
     private readonly ILogger _logger;
 
     private readonly CancellationTokenSource _cts;
@@ -37,7 +37,7 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
         TimeSpan watchingInterval,
         TimeSpan errorRetryDelay,
         IChangeDetectionStrategy changeDetectionStrategy,
-        ConcurrentDictionary<string, string> contentHashes,
+        ConcurrentDictionary<string, string> blobFingerprints,
         ILogger logger)
     {
         _blobServiceClient = blobServiceClient;
@@ -47,7 +47,7 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
         _watchingInterval = watchingInterval;
         _errorRetryDelay = errorRetryDelay;
         _changeDetectionStrategy = changeDetectionStrategy;
-        _contentHashes = contentHashes;
+        _blobFingerprints = blobFingerprints;
         _logger = logger;
         _cts = new CancellationTokenSource();
 
@@ -129,7 +129,8 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
                 return false;
             }
 
-            return await _changeDetectionStrategy.HasChangedAsync(blobClient, _blobPath, _contentHashes, _cts.Token);
+            var hasChanged = await _changeDetectionStrategy.HasChangedAsync(blobClient, _blobPath, _blobFingerprints, _cts.Token);
+            return hasChanged;
         }
         catch (OperationCanceledException)
         {

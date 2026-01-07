@@ -10,7 +10,7 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStr
 /// </summary>
 public class ContentBasedChangeDetectionStrategy(ILogger logger, int maxContentHashSizeMb) : IChangeDetectionStrategy
 {
-    public async Task<bool> HasChangedAsync(BlobClient blobClient, string blobPath, ConcurrentDictionary<string, string> contentHashes, CancellationToken cancellationToken)
+    public async Task<bool> HasChangedAsync(BlobClient blobClient, string blobPath, ConcurrentDictionary<string, string> blobFingerprints, CancellationToken cancellationToken)
     {
         try
         {
@@ -23,17 +23,17 @@ public class ContentBasedChangeDetectionStrategy(ILogger logger, int maxContentH
                 
                 // Use ETag fallback logic directly
                 var fallbackStrategy = new ETagChangeDetectionStrategy(logger);
-                return await fallbackStrategy.HasChangedAsync(blobClient, blobPath, contentHashes, cancellationToken);
+                return await fallbackStrategy.HasChangedAsync(blobClient, blobPath, blobFingerprints, cancellationToken);
             }
 
             // Keep ETag-based state in sync even when using content hashing, so that
             // switching between strategies does not lose change-detection history.
             var etagKey = $"{blobPath}:etag";
             var currentEtag = properties.Value.ETag.ToString();
-            var previousEtag = contentHashes.GetValueOrDefault(etagKey);
+            var previousEtag = blobFingerprints.GetValueOrDefault(etagKey);
             if (currentEtag != previousEtag)
             {
-                contentHashes[etagKey] = currentEtag;
+                blobFingerprints[etagKey] = currentEtag;
             }
             
             await using var stream = await blobClient.OpenReadAsync(cancellationToken: cancellationToken);
@@ -41,10 +41,11 @@ public class ContentBasedChangeDetectionStrategy(ILogger logger, int maxContentH
             var hashBytes = await sha256.ComputeHashAsync(stream, cancellationToken);
             var currentHash = Convert.ToBase64String(hashBytes);
 
-            var previousHash = contentHashes.GetValueOrDefault(blobPath);
+            var sha256Key = $"{blobPath}:sha256";
+            var previousHash = blobFingerprints.GetValueOrDefault(sha256Key);
             if (currentHash != previousHash)
             {
-                contentHashes[blobPath] = currentHash;
+                blobFingerprints[sha256Key] = currentHash;
 
                 var oldHashDisplay = previousHash == null
                     ? "..."
