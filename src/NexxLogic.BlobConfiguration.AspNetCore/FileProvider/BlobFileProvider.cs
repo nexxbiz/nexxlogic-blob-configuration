@@ -24,7 +24,6 @@ public class BlobFileProvider : IFileProvider, IDisposable
     private readonly IChangeDetectionStrategy _changeDetectionStrategyInstance;
     private readonly int _maxContentHashSizeMb;
     private readonly ConcurrentDictionary<string, string> _contentHashes;
-    private readonly ConcurrentDictionary<string, Timer> _debounceTimers;
     private readonly ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>> _tokenCache;
     private readonly object _tokenCreationLock = new object();
     private volatile bool _disposed;
@@ -69,7 +68,6 @@ public class BlobFileProvider : IFileProvider, IDisposable
         _changeDetectionStrategyInstance = CreateChangeDetectionStrategy();
         
         _contentHashes = new ConcurrentDictionary<string, string>();
-        _debounceTimers = new ConcurrentDictionary<string, Timer>();
         _tokenCache = new ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>>();
         
         try
@@ -206,7 +204,6 @@ public class BlobFileProvider : IFileProvider, IDisposable
                     _errorRetryDelay,
                     _changeDetectionStrategyInstance,
                     _contentHashes,
-                    _debounceTimers,
                     _logger);
                 
                 // Cache the new token using WeakReference to avoid memory leaks
@@ -353,7 +350,6 @@ public class BlobFileProvider : IFileProvider, IDisposable
         if (_disposed) return;
         _disposed = true;
 
-
         // Cancel and dispose legacy change token to stop WatchBlobUpdate tasks
         try
         {
@@ -365,12 +361,6 @@ public class BlobFileProvider : IFileProvider, IDisposable
             _logger.LogWarning(ex, "Error disposing legacy change token");
         }
 
-        // Dispose all active debounce timers
-        foreach (var timer in _debounceTimers.Values)
-        {
-            timer.Dispose();
-        }
-        _debounceTimers.Clear();
 
         _logger.LogDebug("BlobFileProvider disposed");
         

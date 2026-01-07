@@ -137,7 +137,6 @@ public class EnhancedBlobChangeTokenTests
             TimeSpan.FromMilliseconds(50), // Fast error retry
             slowStrategy,
             new ConcurrentDictionary<string, string>(),
-            new ConcurrentDictionary<string, Timer>(),
             _logger);
 
         // Act - Let the token start its background operation, then cancel
@@ -177,7 +176,6 @@ public class EnhancedBlobChangeTokenTests
                 TimeSpan.FromSeconds(errorRetrySeconds),
                 strategy,
                 new ConcurrentDictionary<string, string>(),
-                new ConcurrentDictionary<string, Timer>(),
                 _logger);
         });
         Assert.Null(exception);
@@ -190,7 +188,7 @@ public class EnhancedBlobChangeTokenTests
         var blobServiceClient = CreateMockBlobServiceClient();
         var faultyStrategy = CreateFaultyStrategy();
 
-        using var token = new EnhancedBlobChangeToken(
+        await using var token = new EnhancedBlobChangeToken(
             blobServiceClient,
             ContainerName,
             BlobPath,
@@ -199,7 +197,6 @@ public class EnhancedBlobChangeTokenTests
             TimeSpan.FromMilliseconds(10), // Fast error retry
             faultyStrategy,
             new ConcurrentDictionary<string, string>(),
-            new ConcurrentDictionary<string, Timer>(),
             _logger);
 
         // Act - Let it run briefly to encounter strategy exceptions
@@ -210,17 +207,17 @@ public class EnhancedBlobChangeTokenTests
     }
 
     [Fact]
-    public void EnhancedBlobChangeToken_ShouldShareState_BetweenInstances()
+    public void EnhancedBlobChangeToken_ShouldShareContentHashes_BetweenInstances()
     {
-        // This tests the shared dictionaries for content hashes and debounce timers
+        // This tests that content hashes are shared between tokens (for caching efficiency)
+        // while each token manages its own debounce timer independently
         
         // Arrange
         var sharedContentHashes = new ConcurrentDictionary<string, string>();
-        var sharedDebounceTimers = new ConcurrentDictionary<string, Timer>();
         var blobServiceClient = CreateMockBlobServiceClient();
         var strategy = CreateMockStrategy();
 
-        // Act - Create two tokens sharing the same dictionaries
+        // Act - Create two tokens sharing the same content hash dictionary
         using var token1 = new EnhancedBlobChangeToken(
             blobServiceClient,
             ContainerName,
@@ -230,7 +227,6 @@ public class EnhancedBlobChangeTokenTests
             TimeSpan.FromSeconds(5),
             strategy,
             sharedContentHashes,
-            sharedDebounceTimers,
             _logger);
 
         using var token2 = new EnhancedBlobChangeToken(
@@ -242,13 +238,15 @@ public class EnhancedBlobChangeTokenTests
             TimeSpan.FromSeconds(5),
             strategy,
             sharedContentHashes,
-            sharedDebounceTimers,
             _logger);
 
-        // Assert - Both tokens should be created successfully and share state
+        // Assert - Both tokens should be created successfully and share content hashes
         Assert.NotNull(token1);
         Assert.NotNull(token2);
         Assert.NotSame(token1, token2);
+        
+        // The shared content hash dictionary enables efficient caching across tokens
+        // Each token manages its own debounce timer independently for better isolation
     }
 
     private EnhancedBlobChangeToken CreateToken()
@@ -262,7 +260,6 @@ public class EnhancedBlobChangeTokenTests
             TimeSpan.FromSeconds(60),
             CreateMockStrategy(),
             new ConcurrentDictionary<string, string>(),
-            new ConcurrentDictionary<string, Timer>(),
             _logger);
     }
 

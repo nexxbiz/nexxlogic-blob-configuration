@@ -16,11 +16,11 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
     private readonly TimeSpan _errorRetryDelay;
     private readonly IChangeDetectionStrategy _changeDetectionStrategy;
     private readonly ConcurrentDictionary<string, string> _contentHashes;
-    private readonly ConcurrentDictionary<string, Timer> _debounceTimers;
     private readonly ILogger _logger;
 
     private readonly CancellationTokenSource _cts;
     private readonly Task _watchingTask;
+    private Timer? _debounceTimer;
     private volatile bool _hasChanged;
     private volatile bool _disposed;
     private readonly object _lock = new object();
@@ -38,7 +38,6 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
         TimeSpan errorRetryDelay,
         IChangeDetectionStrategy changeDetectionStrategy,
         ConcurrentDictionary<string, string> contentHashes,
-        ConcurrentDictionary<string, Timer> debounceTimers,
         ILogger logger)
     {
         _blobServiceClient = blobServiceClient;
@@ -49,7 +48,6 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
         _errorRetryDelay = errorRetryDelay;
         _changeDetectionStrategy = changeDetectionStrategy;
         _contentHashes = contentHashes;
-        _debounceTimers = debounceTimers;
         _logger = logger;
         _cts = new CancellationTokenSource();
 
@@ -157,26 +155,16 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
         {
             if (_disposed) return; // Double-check after acquiring lock
             
-            // Cancel existing timer
-            if (_debounceTimers.TryRemove(_blobPath, out var existingTimer))
-            {
-                existingTimer.Dispose();
-            }
+            // Cancel existing timer if any
+            _debounceTimer?.Dispose();
 
-            // Capture state at timer creation to avoid race conditions
-            var cancellationToken = _cts.Token;
-            var blobPath = _blobPath; // Capture to avoid potential closure issues
-            var debounceDelay = _debounceDelay;
-            
-            // Create wrapper for cleanup to avoid captured variable warnings
-            var disposables = new List<IDisposable>();
-            
-            var timer = new Timer(_ =>
+            // Create new debounce timer for this token
+            _debounceTimer = new Timer(_ =>
             {
                 try
                 {
-                    // Check cancellation and disposal state
-                    if (cancellationToken.IsCancellationRequested || _disposed)
+                    // Check disposal state
+                    if (_disposed)
                     {
                         return;
                     }
@@ -185,54 +173,20 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
                     _hasChanged = true;
                     NotifyCallbacks();
                     _logger.LogInformation("Debounced change notification triggered for blob {BlobPath} after {Delay}s delay",
-                        blobPath, debounceDelay.TotalSeconds);
+                        _blobPath, _debounceDelay.TotalSeconds);
                 }
                 catch (Exception ex)
                 {
-                    // Only log errors if we're not in a cancelled/disposed state
-                    if (!cancellationToken.IsCancellationRequested && !_disposed)
+                    // Only log errors if we're not disposed
+                    if (!_disposed)
                     {
-                        _logger.LogError(ex, "Error in debounced change notification for blob {BlobPath}", blobPath);
+                        _logger.LogError(ex, "Error executing debounced change callback for blob {BlobPath}", _blobPath);
                     }
                 }
-                finally
-                {
-                    // Clean up all disposables
-                    foreach (var disposable in disposables)
-                    {
-                        try
-                        {
-                            disposable.Dispose();
-                        }
-                        catch
-                        {
-                            // Ignore cleanup errors during shutdown
-                        }
-                    }
-                }
-            }, null, debounceDelay, Timeout.InfiniteTimeSpan);
-
-            // Register for cancellation to ensure timer is disposed when token is cancelled
-            var cancellationRegistration = cancellationToken.Register(() =>
-            {
-                try
-                {
-                    timer.Dispose();
-                }
-                catch
-                {
-                    // Ignore disposal errors during cancellation
-                }
-            });
-
-            // Add to disposables list for cleanup
-            disposables.Add(cancellationRegistration);
-            disposables.Add(timer);
-
-            _debounceTimers[blobPath] = timer;
+            }, null, _debounceDelay, Timeout.InfiniteTimeSpan);
             
             _logger.LogDebug("Change detected for blob {BlobPath}, starting {Delay}s debounce timer",
-                blobPath, debounceDelay.TotalSeconds);
+                _blobPath, _debounceDelay.TotalSeconds);
         }
     }
 
@@ -329,6 +283,9 @@ public IDisposable RegisterChangeCallback(Action<object?> callback, object? stat
                 _callbacks.Clear();
             }
             
+            // Dispose the debounce timer if it exists
+            _debounceTimer?.Dispose();
+            
             _cts.Dispose();
             
             _logger.LogDebug("EnhancedBlobChangeToken disposed asynchronously for blob {BlobPath}", _blobPath);
@@ -357,6 +314,9 @@ public IDisposable RegisterChangeCallback(Action<object?> callback, object? stat
             {
                 _callbacks.Clear();
             }
+            
+            // Dispose the debounce timer if it exists
+            _debounceTimer?.Dispose();
             
             _cts.Dispose();
             
