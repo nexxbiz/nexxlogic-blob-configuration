@@ -33,8 +33,6 @@ public class BlobConfigurationOptions
     [Range(0, 3600, ErrorMessage = "DebounceDelaySeconds must be between 0 and 3600 seconds (1 hour). Use 0 to disable debouncing.")]
     public int DebounceDelaySeconds { get; set; } = 30;
 
-
-
     /// <summary>
     /// Maximum file size in MB for content-based hash calculation
     /// </summary>
