@@ -93,7 +93,7 @@ public class BlobConfigurationOptionsValidatorTests
 
         // Assert
         Assert.NotEqual(ValidationResult.Success, result);
-        Assert.NotNull(result.ErrorMessage);
+        Assert.NotNull(result!.ErrorMessage);
         Assert.Contains("Cannot specify both ConnectionString and BlobContainerUrl", result.ErrorMessage);
     }
 

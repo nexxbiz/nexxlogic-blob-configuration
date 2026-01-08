@@ -25,7 +25,6 @@ public class BlobFileProvider : IFileProvider, IDisposable
     private readonly int _maxContentHashSizeMb;
     private readonly ConcurrentDictionary<string, string> _blobFingerprints;
     private readonly ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>> _tokenCache;
-    private readonly object _tokenCreationLock = new object();
     private volatile bool _disposed;
 
     private BlobChangeToken _changeToken = new();
@@ -175,48 +174,35 @@ public class BlobFileProvider : IFileProvider, IDisposable
         {
             var blobPath = GetBlobPath(filter);
             
-            // Check cache first and reuse existing token if still alive
-            if (_tokenCache.TryGetValue(blobPath, out var weakRef) && weakRef.TryGetTarget(out var existingToken))
+            // Use GetOrAdd with factory function to atomically get existing or create new token
+            var weakRef = _tokenCache.GetOrAdd(blobPath, _ => CreateTokenWeakReference(blobPath, filter));
+            
+            // Check if the weak reference still has a live target
+            if (weakRef.TryGetTarget(out var existingToken))
             {
                 _logger.LogDebug("Reusing existing enhanced watch token for filter: {Filter}", filter);
                 return existingToken;
             }
             
-            // Use lock to prevent race condition when creating new tokens
-            lock (_tokenCreationLock)
+            // If weak reference is dead, create a new token and update the cache
+            // This handles the case where the token was garbage collected between GetOrAdd and TryGetTarget
+            var newWeakRef = CreateTokenWeakReference(blobPath, filter);
+            _tokenCache.TryUpdate(blobPath, newWeakRef, weakRef);
+            
+            if (newWeakRef.TryGetTarget(out var newToken))
             {
-                // Double-check pattern: verify token wasn't created by another thread
-                if (_tokenCache.TryGetValue(blobPath, out weakRef) && weakRef.TryGetTarget(out existingToken))
-                {
-                    _logger.LogDebug("Found existing enhanced watch token created by another thread for filter: {Filter}", filter);
-                    return existingToken;
-                }
-                
-                _logger.LogDebug("Creating new enhanced watch token for filter: {Filter} with strategy: {Strategy}", 
-                    filter, _strategyFactory.GetType().Name);
-                
-                var newToken = new EnhancedBlobChangeToken(
-                    _blobServiceClient,
-                    _blobConfig.ContainerName,
-                    blobPath,
-                    _debounceDelay,
-                    _watchingInterval,
-                    _errorRetryDelay,
-                    _changeDetectionStrategyInstance,
-                    _blobFingerprints,
-                    _logger);
-                
-                // Cache the new token using WeakReference to avoid memory leaks
-                _tokenCache[blobPath] = new WeakReference<EnhancedBlobChangeToken>(newToken);
-                
                 // Clean up dead references periodically (simple cleanup strategy)
-                if (_tokenCache.Count > 100) // Arbitrary threshold
+                if (_tokenCache.Count > 100)
                 {
                     CleanupDeadReferences();
                 }
                 
                 return newToken;
             }
+            
+            // This should not happen, but fallback to direct creation if it does
+            _logger.LogWarning("Failed to get token from weak reference, falling back to direct creation for filter: {Filter}", filter);
+            return CreateEnhancedToken(blobPath, filter);
         }
 
         // Legacy implementation
@@ -228,6 +214,29 @@ public class BlobFileProvider : IFileProvider, IDisposable
     private IChangeDetectionStrategy CreateChangeDetectionStrategy()
     {
         return _strategyFactory.CreateStrategy(_logger);
+    }
+
+    private WeakReference<EnhancedBlobChangeToken> CreateTokenWeakReference(string blobPath, string filter)
+    {
+        var token = CreateEnhancedToken(blobPath, filter);
+        return new WeakReference<EnhancedBlobChangeToken>(token);
+    }
+
+    private EnhancedBlobChangeToken CreateEnhancedToken(string blobPath, string filter)
+    {
+        _logger.LogDebug("Creating new enhanced watch token for filter: {Filter} with strategy: {Strategy}", 
+            filter, _strategyFactory.GetType().Name);
+        
+        return new EnhancedBlobChangeToken(
+            _blobServiceClient!,
+            _blobConfig.ContainerName,
+            blobPath,
+            _debounceDelay,
+            _watchingInterval,
+            _errorRetryDelay,
+            _changeDetectionStrategyInstance,
+            _blobFingerprints,
+            _logger);
     }
 
 

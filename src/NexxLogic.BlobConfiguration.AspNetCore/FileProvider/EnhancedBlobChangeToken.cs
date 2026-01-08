@@ -264,13 +264,11 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
     }
     public async ValueTask DisposeAsync()
     {
-        if (_disposed) return; // Already disposed
+        if (_disposed) return; 
         
         try
         {
-            _disposed = true;
-            
-            _cts.Cancel();
+            await _cts.CancelAsync();
             
             try
             {
@@ -295,10 +293,11 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
             }
             
             // Dispose the debounce timer if it exists
-            _debounceTimer?.Dispose();
+            _debounceTimer?.DisposeAsync();
             
             _cts.Dispose();
             
+            _disposed = true;
             _logger.LogDebug("EnhancedBlobChangeToken disposed asynchronously for blob {BlobPath}", _blobPath);
         }
         catch (Exception ex)
@@ -318,7 +317,6 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
         {
             // For synchronous disposal, we don't block on task completion
             // Just signal cancellation and dispose resources immediately
-            _disposed = true;
             _cts.Cancel();
             
             lock (_lock)
@@ -330,6 +328,7 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
             _debounceTimer?.Dispose();
             
             _cts.Dispose();
+            _disposed = true;
             
             _logger.LogDebug("EnhancedBlobChangeToken disposed synchronously for blob {BlobPath} (task may still be running)", _blobPath);
         }
