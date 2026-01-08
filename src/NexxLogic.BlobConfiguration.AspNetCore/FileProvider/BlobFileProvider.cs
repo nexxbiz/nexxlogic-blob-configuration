@@ -173,35 +173,50 @@ public class BlobFileProvider : IFileProvider, IDisposable
         if (_blobServiceClient != null)
         {
             var blobPath = GetBlobPath(filter);
-            
-            // Use GetOrAdd with factory function to atomically get existing or create new token
+
+            // Use GetOrAdd with factory function to atomically get existing or create new weak reference
             var weakRef = _tokenCache.GetOrAdd(blobPath, _ => CreateTokenWeakReference(blobPath, filter));
-            
+
             // Check if the weak reference still has a live target
             if (weakRef.TryGetTarget(out var existingToken))
             {
                 _logger.LogDebug("Reusing existing enhanced watch token for filter: {Filter}", filter);
                 return existingToken;
             }
-            
-            // If weak reference is dead, create a new token and update the cache
-            // This handles the case where the token was garbage collected between GetOrAdd and TryGetTarget
-            var newWeakRef = CreateTokenWeakReference(blobPath, filter);
-            _tokenCache.TryUpdate(blobPath, newWeakRef, weakRef);
-            
-            if (newWeakRef.TryGetTarget(out var newToken))
+
+            // If the weak reference is dead, atomically update the cache and get the resulting weak reference.
+            // AddOrUpdate ensures we see the latest value for the key and avoid racy TryUpdate logic.
+            weakRef = _tokenCache.AddOrUpdate(
+                blobPath,
+                _ => CreateTokenWeakReference(blobPath, filter),
+                (_, current) =>
+                {
+                    // If the current weak reference still has a live target, keep using it.
+                    if (current.TryGetTarget(out var currentToken) && currentToken is not null)
+                    {
+                        return current;
+                    }
+
+                    // Otherwise, create a new weak reference and token.
+                    return CreateTokenWeakReference(blobPath, filter);
+                });
+
+            // Try to get the token from the (possibly updated) weak reference.
+            if (weakRef.TryGetTarget(out var newToken) && newToken is not null)
             {
                 // Clean up dead references periodically (simple cleanup strategy)
                 if (_tokenCache.Count > 100)
                 {
                     CleanupDeadReferences();
                 }
-                
+
                 return newToken;
             }
-            
+
             // This should not happen, but fallback to direct creation if it does
-            _logger.LogWarning("Failed to get token from weak reference, falling back to direct creation for filter: {Filter}", filter);
+            _logger.LogWarning(
+                "Failed to get token from weak reference, falling back to direct creation for filter: {Filter}",
+                filter);
             return CreateEnhancedToken(blobPath, filter);
         }
 
