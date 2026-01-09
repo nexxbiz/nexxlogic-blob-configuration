@@ -43,7 +43,7 @@ internal static class BlobConfigurationOptionsValidator
             customValidationErrors.Add("ContainerName is required.");
         }
 
-        if (customValidationErrors.Count != 0)
+        if (customValidationErrors.Count > 0)
         {
             var errorMessage = string.Join(" ", customValidationErrors);
             return new ValidationResult(errorMessage);
