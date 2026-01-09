@@ -3,9 +3,18 @@ using System.Collections;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 
-public class BlobDirectoryContents(bool containerExists, List<IFileInfo> fileInfos) : IDirectoryContents
+public class BlobDirectoryContents : IDirectoryContents
 {
-    public bool Exists => containerExists;
+    private readonly bool exists;
+    private readonly List<IFileInfo> fileInfos;
+
+    public BlobDirectoryContents(bool containerExists, List<IFileInfo> fileInfos)
+    {
+        this.exists = containerExists;
+        this.fileInfos = fileInfos;
+    }
+
+    public bool Exists => exists;
 
     public IEnumerator<IFileInfo> GetEnumerator()
     {

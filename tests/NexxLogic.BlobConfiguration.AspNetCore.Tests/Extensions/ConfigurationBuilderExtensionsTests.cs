@@ -1,4 +1,6 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using Castle.Core.Logging;
+using FluentValidation;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -11,16 +13,18 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.Extensions;
 public class BlobConfigurationBuilderExtensionsTests
 {
     [Fact]
-    public void AddJsonBlob_ShouldThrowArgumentException_WhenBlobConfigurationOptionsIsNotValid()
+    public void AddJsonBlob_ShouldThrowValidationException_WhenBlobConfigurationOptionsIsNotValid()
     {
         // Arrange
         var configurationBuilderMock = Substitute.For<IConfigurationBuilder>();
         var loggerFactory = new NullLoggerFactory();
         var logger = loggerFactory.CreateLogger<BlobFileProvider>();
 
-        // Act & Assert
-        var exception = Assert.Throws<ArgumentException>(() => configurationBuilderMock.AddJsonBlob(config => { }, logger));
-        Assert.Contains("Invalid BlobConfiguration values:", exception.Message);
+        // Act
+        var method = () => configurationBuilderMock.AddJsonBlob(config => { }, logger);
+
+        // Assert
+        method.Should().Throw<ValidationException>();
         configurationBuilderMock
             .DidNotReceive()
             .Add(Substitute.For<IConfigurationSource>());
