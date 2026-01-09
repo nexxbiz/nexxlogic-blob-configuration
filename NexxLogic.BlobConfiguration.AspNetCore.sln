@@ -22,6 +22,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "items", "items", "{06A5ABBF
 		Directory.Build.props = Directory.Build.props
 		Directory.Packages.props = Directory.Packages.props
 		.github\workflows\release.yml = .github\workflows\release.yml
+		README.md = README.md
 	EndProjectSection
 EndProject
 Global

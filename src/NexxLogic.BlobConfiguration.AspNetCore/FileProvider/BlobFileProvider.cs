@@ -4,16 +4,28 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
-using System.IO;
+using System.Collections.Concurrent;
+using System.ComponentModel.DataAnnotations;
+using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 
-public class BlobFileProvider : IFileProvider
+public class BlobFileProvider : IFileProvider, IDisposable
 {
     private readonly IBlobClientFactory _blobClientFactory;
     private readonly IBlobContainerClientFactory _blobContainerClientFactory;
     private readonly BlobConfigurationOptions _blobConfig;
     private readonly ILogger<BlobFileProvider> _logger;
+    private readonly BlobServiceClient? _blobServiceClient;
+    private readonly TimeSpan _debounceDelay;
+    private readonly TimeSpan _watchingInterval;
+    private readonly TimeSpan _errorRetryDelay;
+    private readonly IChangeDetectionStrategyFactory _strategyFactory;
+    private readonly IChangeDetectionStrategy _changeDetectionStrategyInstance;
+    private readonly int _maxContentHashSizeMb;
+    private readonly ConcurrentDictionary<string, string> _blobFingerprints;
+    private readonly ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>> _tokenCache;
+    private volatile bool _disposed;
 
     private BlobChangeToken _changeToken = new();
     /// <summary>
@@ -40,6 +52,74 @@ public class BlobFileProvider : IFileProvider
         _blobConfig = blobConfig;
         _blobContainerClientFactory = blobContainerClientFactory;
         _logger = logger;
+
+        // Validate configuration values at runtime
+        ValidateConfiguration(blobConfig);
+
+        // Initialize enhanced options with validated values
+        _debounceDelay = TimeSpan.FromSeconds(_blobConfig.DebounceDelaySeconds);
+        _watchingInterval = TimeSpan.FromSeconds(_blobConfig.WatchingIntervalSeconds);
+        _errorRetryDelay = TimeSpan.FromSeconds(_blobConfig.ErrorRetryDelaySeconds);
+        _strategyFactory = new ChangeDetectionStrategyFactory(_blobConfig);
+        _maxContentHashSizeMb = _blobConfig.MaxFileContentHashSizeMb;
+        
+        // Create the strategy instance once and reuse it
+        _changeDetectionStrategyInstance = CreateChangeDetectionStrategy();
+        
+        _blobFingerprints = new ConcurrentDictionary<string, string>();
+        _tokenCache = new ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>>();
+        
+        try
+        {
+            if (!string.IsNullOrEmpty(_blobConfig.ConnectionString))
+            {
+                _blobServiceClient = new BlobServiceClient(_blobConfig.ConnectionString);
+            }
+            else if (!string.IsNullOrEmpty(_blobConfig.BlobContainerUrl))
+            {
+                var containerUri = new Uri(_blobConfig.BlobContainerUrl);
+
+                // Only create a BlobServiceClient when the container URL does not contain a SAS token (query string).
+                // If a SAS is present, using only scheme and host would create an unauthenticated client and break enhanced features.
+                if (string.IsNullOrEmpty(containerUri.Query))
+                {
+                    var serviceUri = new Uri($"{containerUri.Scheme}://{containerUri.Host}");
+                    _blobServiceClient = new BlobServiceClient(serviceUri);
+                }
+                else
+                {
+                    _logger.LogInformation(
+                        "BlobContainerUrl contains a SAS token; skipping BlobServiceClient creation for enhanced features. Falling back to legacy mode.");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to create BlobServiceClient for enhanced features. Falling back to legacy mode.");
+        }
+
+        _logger.LogDebug("BlobFileProvider initialized with debounce: {Debounce}s, strategy: {Strategy}",
+            _debounceDelay.TotalSeconds, _strategyFactory.GetType().Name);
+    }
+
+    private static void ValidateConfiguration(BlobConfigurationOptions config)
+    {
+        // Use DataAnnotations validation to enforce Range attributes automatically
+        var validationContext = new ValidationContext(config);
+        var validationResults = new List<ValidationResult>();
+        
+        bool isValid = Validator.TryValidateObject(config, validationContext, validationResults, validateAllProperties: true);
+        
+        if (!isValid)
+        {
+            var errorMessages = validationResults
+                .Where(r => !string.IsNullOrEmpty(r.ErrorMessage))
+                .Select(r => r.ErrorMessage!)
+                .ToArray();
+            
+            var message = "Invalid BlobConfiguration values:" + Environment.NewLine + string.Join(Environment.NewLine, errorMessages);
+            throw new ArgumentException(message, nameof(config));
+        }
     }
 
     public IFileInfo GetFileInfo(string subpath)
@@ -84,9 +164,109 @@ public class BlobFileProvider : IFileProvider
 
     public IChangeToken Watch(string filter)
     {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(BlobFileProvider));
+        }
+
+        // Use enhanced change token if available, otherwise fall back to legacy implementation
+        if (_blobServiceClient != null)
+        {
+            var blobPath = GetBlobPath(filter);
+
+            // Use GetOrAdd with factory function to atomically get existing or create new weak reference
+            var weakRef = _tokenCache.GetOrAdd(blobPath, _ => CreateTokenWeakReference(blobPath, filter));
+
+            // Check if the weak reference still has a live target
+            if (weakRef.TryGetTarget(out var existingToken))
+            {
+                _logger.LogDebug("Reusing existing enhanced watch token for filter: {Filter}", filter);
+                return existingToken;
+            }
+
+            // If the weak reference is dead, atomically update the cache and get the resulting weak reference.
+            // AddOrUpdate ensures we see the latest value for the key and avoid racy TryUpdate logic.
+            weakRef = _tokenCache.AddOrUpdate(
+                blobPath,
+                _ => CreateTokenWeakReference(blobPath, filter),
+                (_, current) =>
+                {
+                    // If the current weak reference still has a live target, keep using it.
+                    if (current.TryGetTarget(out var currentToken) && currentToken is not null)
+                    {
+                        return current;
+                    }
+
+                    // Otherwise, create a new weak reference and token.
+                    return CreateTokenWeakReference(blobPath, filter);
+                });
+
+            // Try to get the token from the (possibly updated) weak reference.
+            if (weakRef.TryGetTarget(out var newToken) && newToken is not null)
+            {
+                // Clean up dead references periodically (simple cleanup strategy)
+                if (_tokenCache.Count > 100)
+                {
+                    CleanupDeadReferences();
+                }
+
+                return newToken;
+            }
+
+            // This should not happen, but fallback to direct creation if it does
+            _logger.LogWarning(
+                "Failed to get token from weak reference, falling back to direct creation for filter: {Filter}",
+                filter);
+            return CreateEnhancedToken(blobPath, filter);
+        }
+
+        // Legacy implementation
         var client = _blobClientFactory.GetBlobClient(filter);
         _ = WatchBlobUpdate(client, _changeToken.CancellationToken);
         return _changeToken;
+    }
+
+    private IChangeDetectionStrategy CreateChangeDetectionStrategy()
+    {
+        return _strategyFactory.CreateStrategy(_logger);
+    }
+
+    private WeakReference<EnhancedBlobChangeToken> CreateTokenWeakReference(string blobPath, string filter)
+    {
+        var token = CreateEnhancedToken(blobPath, filter);
+        return new WeakReference<EnhancedBlobChangeToken>(token);
+    }
+
+    private EnhancedBlobChangeToken CreateEnhancedToken(string blobPath, string filter)
+    {
+        _logger.LogDebug("Creating new enhanced watch token for filter: {Filter} with strategy: {Strategy}", 
+            filter, _strategyFactory.GetType().Name);
+        
+        return new EnhancedBlobChangeToken(
+            _blobServiceClient!,
+            _blobConfig.ContainerName,
+            blobPath,
+            _debounceDelay,
+            _watchingInterval,
+            _errorRetryDelay,
+            _changeDetectionStrategyInstance,
+            _blobFingerprints,
+            _logger);
+    }
+
+
+    private string GetBlobPath(string filter)
+    {
+        // Remove leading slash if present
+        filter = filter.TrimStart('/');
+        
+        // Combine with prefix if configured
+        if (!string.IsNullOrEmpty(_blobConfig.Prefix))
+        {
+            return $"{_blobConfig.Prefix.TrimEnd('/')}/{filter}";
+        }
+        
+        return filter;
     }
 
     private async Task WatchBlobUpdate(BlobClient blobClient, CancellationToken token)
@@ -154,5 +334,88 @@ public class BlobFileProvider : IFileProvider
         var previousToken = Interlocked.Exchange(ref _changeToken, new BlobChangeToken());
         _loadPending = true;
         previousToken.OnReload();
+        
+        // Dispose the previous token to clean up its CancellationTokenSource
+        try
+        {
+            previousToken.Dispose();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error disposing previous change token during reload");
+        }
+    }
+
+    private void CleanupDeadReferences()
+    {
+        var keysToRemove = _tokenCache
+            .Where(kvp => !kvp.Value.TryGetTarget(out _))
+            .Select(kvp => kvp.Key)
+            .ToList();
+        
+        foreach (var key in keysToRemove)
+        {
+            _tokenCache.TryRemove(key, out _);
+        }
+        
+        if (keysToRemove.Count > 0)
+        {
+            _logger.LogDebug("Cleaned up {Count} dead token references", keysToRemove.Count);
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        // Cancel and dispose legacy change token to stop WatchBlobUpdate tasks
+        try
+        {
+            _changeToken.Dispose();
+            _logger.LogDebug("Legacy change token cancelled and disposed");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error disposing legacy change token");
+        }
+
+        // Dispose all cached EnhancedBlobChangeToken instances to clean up their resources
+        DisposeEnhancedTokens();
+
+        _logger.LogDebug("BlobFileProvider disposed");
+        
+        GC.SuppressFinalize(this);
+    }
+
+    private void DisposeEnhancedTokens()
+    {
+        // Collect all live tokens from the cache using explicit filtering
+        var tokensToDispose = _tokenCache
+            .Select(kvp => new { kvp.Key, WeakRef = kvp.Value })
+            .Where(item => item.WeakRef.TryGetTarget(out _))
+            .Select(item => { item.WeakRef.TryGetTarget(out var token); return token!; })
+            .ToList();
+        
+        // Clear the cache immediately to prevent new references
+        _tokenCache.Clear();
+        
+        // Dispose all collected tokens
+        foreach (var token in tokensToDispose)
+        {
+            try
+            {
+                token.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error disposing enhanced change token during BlobFileProvider disposal");
+            }
+        }
+        
+        if (tokensToDispose.Count > 0)
+        {
+            _logger.LogDebug("Disposed {Count} cached enhanced change tokens", tokensToDispose.Count);
+        }
     }
 }
