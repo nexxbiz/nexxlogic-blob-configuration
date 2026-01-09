@@ -213,9 +213,32 @@ public class BlobFileProvider : IFileProvider, IDisposable
                 return newToken;
             }
 
-            // This should not happen, but fallback to direct creation if it does
+            // This should not happen, but attempt to recover by recreating and caching a new weak reference.
             _logger.LogWarning(
-                "Failed to get token from weak reference, falling back to direct creation for filter: {Filter}",
+                "Failed to get token from weak reference, attempting to recreate cached token for filter: {Filter}",
+                filter);
+
+            var fallbackWeakRef = _tokenCache.AddOrUpdate(
+                blobPath,
+                _ => CreateTokenWeakReference(blobPath, filter),
+                (_, current) =>
+                {
+                    if (current.TryGetTarget(out var currentToken) && currentToken is not null)
+                    {
+                        return current;
+                    }
+
+                    return CreateTokenWeakReference(blobPath, filter);
+                });
+
+            if (fallbackWeakRef.TryGetTarget(out var fallbackToken) && fallbackToken is not null)
+            {
+                return fallbackToken;
+            }
+
+            // Absolute last-resort fallback: create a direct token without caching.
+            _logger.LogWarning(
+                "Failed to recreate cached token, falling back to direct creation for filter: {Filter}",
                 filter);
             return CreateEnhancedToken(blobPath, filter);
         }
