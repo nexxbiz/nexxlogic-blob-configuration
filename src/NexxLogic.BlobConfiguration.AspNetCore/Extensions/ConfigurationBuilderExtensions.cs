@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using FluentValidation;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
@@ -13,16 +14,16 @@ public static class ConfigurationBuilderExtensions
         ILogger<BlobFileProvider> logger)
     {
         var options = new BlobConfigurationOptions();
-        configure(options);
-        RequiredBlobNameBlobConfigurationOptionsValidator.ValidateAndThrow(options);
-        var blobContainerClientFactory = new BlobContainerClientFactory(options);
-        var blobClientfactory = new BlobClientFactory(blobContainerClientFactory);
+        configure?.Invoke(options);
+        new RequiredBlobNameBlobConfigurationOptionsValidator().ValidateAndThrow(options);
+        var blobContainerClientfactory = new BlobContainerClientFactory(options);
+        var blobClientfactory = new BlobClientFactory(blobContainerClientfactory);
 
         return builder.AddJsonFile(source =>
         {
             source.FileProvider = new BlobFileProvider(
                 blobClientfactory,
-                blobContainerClientFactory, 
+                blobContainerClientfactory, 
                 options, 
                 logger
             );
@@ -37,8 +38,8 @@ public static class ConfigurationBuilderExtensions
         ILogger<BlobFileProvider> logger)
     {
         var options = new BlobConfigurationOptions();
-        configure(options);
-        BlobConfigurationOptionsValidator.ValidateAndThrow(options);
+        configure?.Invoke(options);
+        new BlobConfigurationOptionsValidator().ValidateAndThrow(options);
 
         var blobContainerClientfactory = new BlobContainerClientFactory(options);
         var blobClientfactory = new BlobClientFactory(blobContainerClientfactory);
@@ -53,16 +54,10 @@ public static class ConfigurationBuilderExtensions
                 {
                     BlobName = blobInfo.Name,
                     ConnectionString = options.ConnectionString,
-                    BlobContainerUrl = options.BlobContainerUrl,
                     ContainerName = options.ContainerName,
                     Optional = options.Optional,
                     ReloadInterval = options.ReloadInterval,
                     ReloadOnChange = options.ReloadOnChange,
-                    // Enhanced properties
-                    DebounceDelaySeconds = options.DebounceDelaySeconds,
-                    MaxFileContentHashSizeMb = options.MaxFileContentHashSizeMb,
-                    WatchingIntervalSeconds = options.WatchingIntervalSeconds,
-                    ErrorRetryDelaySeconds = options.ErrorRetryDelaySeconds
                 };
 
                 source.FileProvider = new BlobFileProvider(
