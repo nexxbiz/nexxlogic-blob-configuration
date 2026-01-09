@@ -46,7 +46,9 @@ public class BlobConfigurationOptions
     public int WatchingIntervalSeconds { get; set; } = 30;
 
     /// <summary>
-    /// Delay in seconds before retrying after an error during blob watching
+    /// Delay in seconds before retrying after an error during blob watching.
+    /// Allows configuring extended backoff in case of repeated failures; values up to 7200 seconds (2 hours) are supported.
+    /// The default is 60 seconds, which is suitable for most scenarios requiring responsive error recovery.
     /// </summary>
     [Range(1, 7200, ErrorMessage = "ErrorRetryDelaySeconds must be between 1 second and 7200 seconds (2 hours).")]
     public int ErrorRetryDelaySeconds { get; set; } = 60;
