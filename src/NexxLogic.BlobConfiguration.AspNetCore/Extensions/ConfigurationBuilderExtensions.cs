@@ -14,16 +14,16 @@ public static class ConfigurationBuilderExtensions
         ILogger<BlobFileProvider> logger)
     {
         var options = new BlobConfigurationOptions();
-        configure?.Invoke(options);
+        configure.Invoke(options);
         new RequiredBlobNameBlobConfigurationOptionsValidator().ValidateAndThrow(options);
-        var blobContainerClientfactory = new BlobContainerClientFactory(options);
-        var blobClientfactory = new BlobClientFactory(blobContainerClientfactory);
+        var blobContainerClientFactory = new BlobContainerClientFactory(options);
+        var blobClientFactory = new BlobClientFactory(blobContainerClientFactory);
 
         return builder.AddJsonFile(source =>
         {
             source.FileProvider = new BlobFileProvider(
-                blobClientfactory,
-                blobContainerClientfactory, 
+                blobClientFactory,
+                blobContainerClientFactory, 
                 options, 
                 logger
             );
@@ -38,13 +38,12 @@ public static class ConfigurationBuilderExtensions
         ILogger<BlobFileProvider> logger)
     {
         var options = new BlobConfigurationOptions();
-        configure?.Invoke(options);
+        configure.Invoke(options);
         new BlobConfigurationOptionsValidator().ValidateAndThrow(options);
 
-        var blobContainerClientfactory = new BlobContainerClientFactory(options);
-        var blobClientfactory = new BlobClientFactory(blobContainerClientfactory);
-
-        var provider = new BlobFileProvider(blobClientfactory, blobContainerClientfactory, options, logger);
+        var blobContainerClientFactory = new BlobContainerClientFactory(options);
+        var blobClientFactory = new BlobClientFactory(blobContainerClientFactory);
+        var provider = new BlobFileProvider(blobClientFactory, blobContainerClientFactory, options, logger);
 
         foreach (var blobInfo in provider.GetDirectoryContents(""))
         {
@@ -61,8 +60,8 @@ public static class ConfigurationBuilderExtensions
                 };
 
                 source.FileProvider = new BlobFileProvider(
-                    blobClientfactory,
-                    blobContainerClientfactory, 
+                    blobClientFactory,
+                    blobContainerClientFactory, 
                     blobOptionsConfiguration,
                     logger
                 );
