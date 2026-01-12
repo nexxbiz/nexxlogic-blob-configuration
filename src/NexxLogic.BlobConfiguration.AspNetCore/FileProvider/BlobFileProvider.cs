@@ -7,9 +7,33 @@ using NexxLogic.BlobConfiguration.AspNetCore.Options;
 using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
+using Azure.Identity;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 
+/// <summary>
+/// File provider that monitors Azure Blob Storage for file changes with enhanced change detection capabilities.
+/// 
+/// Authentication Requirements:
+/// 
+/// 1. ConnectionString: Provides full authentication - enables enhanced features
+///    Example: "DefaultEndpointsProtocol=https;AccountName=myaccount;AccountKey=..."
+/// 
+/// 2. BlobContainerUrl with SAS token: Falls back to legacy mode (no enhanced features)
+///    Example: "https://mystorageaccount.blob.core.windows.net/mycontainer?sv=2020-08-04&amp;ss=b..."
+///    Rationale: SAS tokens provide container-level access, but enhanced features need storage account-level access
+/// 
+/// 3. BlobContainerUrl without SAS token: Uses DefaultAzureCredential, enables enhanced features
+///    Example: "https://mystorageaccount.blob.core.windows.net/mycontainer"
+///    Requires one of:
+///    - Managed Identity (recommended for Azure-hosted applications)
+///    - Azure CLI authentication: `az login` (for local development)
+///    - Environment variables: AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID
+///    - Visual Studio or VS Code authentication
+///    - WorkloadIdentity (for AKS with federated identity)
+/// 
+/// If authentication fails, the provider falls back to legacy mode with reduced functionality.
+/// </summary>
 public class BlobFileProvider : IFileProvider, IDisposable
 {
     private readonly IBlobClientFactory _blobClientFactory;
@@ -74,28 +98,46 @@ public class BlobFileProvider : IFileProvider, IDisposable
             if (!string.IsNullOrEmpty(_blobConfig.ConnectionString))
             {
                 _blobServiceClient = new BlobServiceClient(_blobConfig.ConnectionString);
+                _logger.LogDebug("BlobServiceClient created using connection string");
             }
             else if (!string.IsNullOrEmpty(_blobConfig.BlobContainerUrl))
             {
                 var containerUri = new Uri(_blobConfig.BlobContainerUrl);
 
-                // Only create a BlobServiceClient when the container URL does not contain a SAS token (query string).
-                // If a SAS is present, using only scheme and host would create an unauthenticated client and break enhanced features.
-                if (string.IsNullOrEmpty(containerUri.Query))
+                // If a SAS token is present (query string), fallback to legacy mode
+                // Enhanced features require either ConnectionString or BlobContainerUrl without SAS + DefaultAzureCredential
+                if (!string.IsNullOrEmpty(containerUri.Query))
                 {
-                    var serviceUri = new Uri($"{containerUri.Scheme}://{containerUri.Host}");
-                    _blobServiceClient = new BlobServiceClient(serviceUri);
+                    _logger.LogInformation(
+                        "BlobContainerUrl contains a SAS token; skipping BlobServiceClient creation for enhanced features. " +
+                        "Falling back to legacy mode.");
+                    // Don't create _blobServiceClient - this forces fallback to legacy mode
                 }
                 else
                 {
+                    // No SAS token present - use DefaultAzureCredential for authentication
+                    // This requires one of the following to be configured in the environment:
+                    // - Managed Identity (recommended for Azure-hosted applications)
+                    // - Azure CLI authentication (for local development)
+                    // - Environment variables (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID)
+                    // - Visual Studio or VS Code authentication
+                    var serviceUri = new Uri($"{containerUri.Scheme}://{containerUri.Host}");
+                    var credential = new DefaultAzureCredential();
+                    
+                    _blobServiceClient = new BlobServiceClient(serviceUri, credential, null);
                     _logger.LogInformation(
-                        "BlobContainerUrl contains a SAS token; skipping BlobServiceClient creation for enhanced features. Falling back to legacy mode.");
+                        "BlobServiceClient created using DefaultAzureCredential. Ensure Azure credentials are configured " +
+                        "(Managed Identity, Azure CLI, environment variables, or IDE authentication).");
                 }
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to create BlobServiceClient for enhanced features. Falling back to legacy mode.");
+            _logger.LogWarning(ex, 
+                "Failed to create BlobServiceClient for enhanced features. " +
+                "If using BlobContainerUrl without SAS token, ensure Azure credentials are properly configured " +
+                "(Managed Identity, Azure CLI, environment variables, or IDE authentication). " +
+                "Falling back to legacy mode.");
         }
 
         _logger.LogDebug("BlobFileProvider initialized with debounce: {Debounce}s, strategy: {Strategy}",

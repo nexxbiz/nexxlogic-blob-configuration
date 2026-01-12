@@ -6,6 +6,23 @@ using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrateg
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 
+/// <summary>
+/// Enhanced change token that monitors blob changes with optimized change detection strategies.
+/// Implements both IDisposable and IAsyncDisposable.
+/// 
+/// IMPORTANT: For proper resource cleanup, always use 'await using' or call DisposeAsync() directly.
+/// The synchronous Dispose() method is provided for compatibility but may not properly clean up
+/// background tasks in high-throughput scenarios.
+/// 
+/// Example:
+/// <code>
+/// await using var token = new EnhancedBlobChangeToken(...);
+/// // or
+/// var token = new EnhancedBlobChangeToken(...);
+/// try { /* use token */ }
+/// finally { await token.DisposeAsync(); }
+/// </code>
+/// </summary>
 internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDisposable
 {
     private readonly BlobServiceClient _blobServiceClient;
@@ -262,6 +279,15 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
             }
         });
     }
+    /// <summary>
+    /// Asynchronously disposes the EnhancedBlobChangeToken with proper cleanup of all resources.
+    /// This is the PREFERRED disposal method as it:
+    /// - Properly cancels and waits for the background watching task to complete
+    /// - Ensures all resources (timers, cancellation tokens) are fully disposed
+    /// - Prevents unobserved task exceptions
+    /// - Is safe to use in high-throughput scenarios
+    /// </summary>
+    /// <returns>A ValueTask representing the asynchronous disposal operation</returns>
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return; 
@@ -293,7 +319,7 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
             }
             
             // Dispose the debounce timer if it exists
-            _debounceTimer?.DisposeAsync();
+            await (_debounceTimer?.DisposeAsync() ?? ValueTask.CompletedTask);
             
             _cts.Dispose();
             
@@ -306,6 +332,13 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
         }
     }
 
+    /// <summary>
+    /// Synchronously disposes the EnhancedBlobChangeToken.
+    /// WARNING: This method does not wait for the background watching task to complete,
+    /// which may result in unobserved task exceptions or incomplete cleanup.
+    /// For proper resource cleanup, prefer DisposeAsync() when possible.
+    /// </summary>
+    [Obsolete("Synchronous disposal may not properly clean up background tasks. Use DisposeAsync() for proper resource cleanup in high-throughput scenarios.", DiagnosticId = "NEXX0001")]
     public void Dispose()
     {
         // Synchronous disposal for IDisposable compatibility

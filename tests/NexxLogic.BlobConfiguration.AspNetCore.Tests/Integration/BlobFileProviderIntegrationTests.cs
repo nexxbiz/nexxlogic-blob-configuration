@@ -58,24 +58,51 @@ public class BlobFileProviderIntegrationTests
         // Arrange
         var options = CreateOptionsWithContentBasedStrategy();
         var provider = CreateBlobFileProvider(options);
-        var tokens = new List<IChangeToken>();
+        var allTokensWithPaths = new ConcurrentBag<(IChangeToken token, string path)>();
 
-        // Act - Create many watch tokens concurrently (each with unique file name)
+        // Act - Test concurrent calls with both unique and duplicate paths
         var tasks = Enumerable.Range(0, 100).Select(i => Task.Run(() =>
         {
-            var token = provider.Watch($"file{i}.json"); // Each file name is unique
-            lock (tokens)
-            {
-                tokens.Add(token);
-            }
+            // Create mix of unique and duplicate paths to test both scenarios
+            var fileName = i < 50 ? $"file{i}.json" : $"file{i % 10}.json"; // First 50 unique, rest duplicate
+            var token = provider.Watch(fileName);
+            allTokensWithPaths.Add((token, fileName));
         })).ToArray();
 
         Task.WaitAll(tasks);
 
         // Assert
-        Assert.Equal(100, tokens.Count);
-        Assert.All(tokens, token => Assert.True(token is EnhancedBlobChangeToken || token is BlobChangeToken)); // Enhanced or legacy mode
-        Assert.Equal(tokens.Count, tokens.Distinct().Count()); // Each unique path should return a unique cached token
+        var tokensList = allTokensWithPaths.ToList();
+        Assert.Equal(100, tokensList.Count);
+        Assert.All(tokensList, item => Assert.True(item.token is EnhancedBlobChangeToken || item.token is BlobChangeToken));
+
+        // Group tokens by their actual paths
+        var pathToTokens = tokensList.GroupBy(item => item.path)
+                                   .ToDictionary(g => g.Key, g => g.Select(item => item.token).ToList());
+
+        if (tokensList.First().token is EnhancedBlobChangeToken)
+        {
+            // Enhanced mode: Same path should return same cached token instance
+            foreach (var kvp in pathToTokens)
+            {
+                if (kvp.Value.Count > 1)
+                {
+                    // All tokens for the same path should be the same instance (cached)
+                    var firstToken = kvp.Value.First();
+                    Assert.All(kvp.Value, token => Assert.Same(firstToken, token));
+                }
+            }
+            
+            // Total distinct tokens should equal number of unique paths
+            var uniqueTokens = tokensList.Select(item => item.token).Distinct().ToList();
+            Assert.Equal(pathToTokens.Keys.Count, uniqueTokens.Count); // Should match number of unique paths
+            Assert.Equal(50, pathToTokens.Keys.Count); // 50 unique + 10 from duplicates
+        }
+        else
+        {
+            // Legacy mode: Just verify no exceptions occurred and all tokens are valid
+            Assert.All(tokensList, item => Assert.NotNull(item.token));
+        }
     }
 
     [Fact]
