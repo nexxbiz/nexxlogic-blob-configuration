@@ -168,8 +168,10 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
         {
             if (_disposed) return; // Double-check after acquiring lock
             
-            // Cancel existing timer if any
-            _debounceTimer?.Dispose();
+            // Atomically replace and dispose old timer to prevent race condition
+            // where multiple timers could be created if TriggerDebouncedChange is called concurrently
+            var oldTimer = Interlocked.Exchange(ref _debounceTimer, null);
+            oldTimer?.Dispose();
 
             // Create new debounce timer for this token
             _debounceTimer = new Timer(_ =>
@@ -292,8 +294,10 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
                 _callbacks.Clear();
             }
             
-            // Dispose the debounce timer if it exists
-            _debounceTimer?.DisposeAsync();
+            // Properly await timer async disposal before marking as disposed
+            // This ensures any pending timer callback completes before we set _disposed = true
+            var timerTask = _debounceTimer?.DisposeAsync() ?? ValueTask.CompletedTask;
+            await timerTask;
             
             _cts.Dispose();
             
