@@ -45,7 +45,6 @@ public class BlobFileProvider : IFileProvider, IDisposable
     private readonly TimeSpan _watchingInterval;
     private readonly TimeSpan _errorRetryDelay;
     private readonly IChangeDetectionStrategyFactory _strategyFactory;
-    private readonly IChangeDetectionStrategy _changeDetectionStrategyInstance;
     private readonly int _maxContentHashSizeMb;
     private readonly ConcurrentDictionary<string, string> _blobFingerprints;
     private readonly ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>> _tokenCache;
@@ -86,9 +85,6 @@ public class BlobFileProvider : IFileProvider, IDisposable
         _errorRetryDelay = TimeSpan.FromSeconds(_blobConfig.ErrorRetryDelaySeconds);
         _strategyFactory = new ChangeDetectionStrategyFactory(_blobConfig);
         _maxContentHashSizeMb = _blobConfig.MaxFileContentHashSizeMb;
-        
-        // Create the strategy instance once and reuse it
-        _changeDetectionStrategyInstance = CreateChangeDetectionStrategy();
         
         _blobFingerprints = new ConcurrentDictionary<string, string>();
         _tokenCache = new ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>>();
@@ -314,7 +310,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
             _debounceDelay,
             _watchingInterval,
             _errorRetryDelay,
-            _changeDetectionStrategyInstance,
+            CreateChangeDetectionStrategy(),
             _blobFingerprints,
             _logger);
     }
