@@ -11,7 +11,18 @@ internal static class BlobConfigurationOptionsValidator
         // Validate using DataAnnotations first
         if (!Validator.TryValidateObject(options, validationContext, validationResults, validateAllProperties: true))
         {
-            return validationResults.First();
+            var errorMessages = validationResults
+                .Where(r => !string.IsNullOrWhiteSpace(r.ErrorMessage))
+                .Select(r => r.ErrorMessage!);
+
+            var combinedMessage = string.Join(" ", errorMessages);
+
+            if (string.IsNullOrWhiteSpace(combinedMessage))
+            {
+                combinedMessage = "One or more validation errors occurred.";
+            }
+
+            return new ValidationResult(combinedMessage);
         }
 
         // Custom validation rules
