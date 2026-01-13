@@ -340,9 +340,10 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
     /// Synchronously disposes the EnhancedBlobChangeToken.
     /// WARNING: This method does not wait for the background watching task to complete,
     /// which may result in unobserved task exceptions or incomplete cleanup.
-    /// For proper resource cleanup, prefer DisposeAsync() when possible.
+    /// For proper resource cleanup, prefer <see cref="DisposeAsync"/> when possible.
+    /// This method exists primarily to satisfy the IDisposable contract for callers
+    /// that cannot use asynchronous disposal.
     /// </summary>
-    [Obsolete("Synchronous disposal may not properly clean up background tasks. Use DisposeAsync() for proper resource cleanup in high-throughput scenarios.", DiagnosticId = "NEXX0001")]
     public void Dispose()
     {
         // Synchronous disposal for IDisposable compatibility

@@ -1,4 +1,4 @@
-﻿using Azure.Storage.Blobs;
+using Azure.Storage.Blobs;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
@@ -271,32 +271,9 @@ public class BlobFileProvider : IFileProvider, IDisposable
                 return newToken;
             }
 
-            // This should not happen, but attempt to recover by recreating and caching a new weak reference.
+            // This should not happen; create a new token directly without attempting further cache recovery.
             _logger.LogWarning(
-                "Failed to get token from weak reference, attempting to recreate cached token for filter: {Filter}",
-                filter);
-
-            var fallbackWeakRef = _tokenCache.AddOrUpdate(
-                blobPath,
-                _ => CreateTokenWeakReference(blobPath, filter),
-                (_, current) =>
-                {
-                    if (current.TryGetTarget(out var _))
-                    {
-                        return current;
-                    }
-
-                    return CreateTokenWeakReference(blobPath, filter);
-                });
-
-            if (fallbackWeakRef.TryGetTarget(out var fallbackToken))
-            {
-                return fallbackToken;
-            }
-
-            // Absolute last-resort fallback: create a direct token without caching.
-            _logger.LogWarning(
-                "Failed to recreate cached token, falling back to direct creation for filter: {Filter}",
+                "Failed to get token from weak reference; creating new token directly for filter: {Filter}",
                 filter);
             return CreateEnhancedToken(blobPath, filter);
         }

@@ -26,9 +26,9 @@ builder.Configuration.AddJsonBlob(config =>
 }, logger);
 
 // Error: "Invalid BlobConfiguration values:
-// DebounceDelaySeconds must be between 0 and 3600 seconds (1 hour). Use 0 to disable debouncing. Current value: -5
-// WatchingIntervalSeconds must be between 1 second and 86400 seconds (24 hours). Current value: 0  
-// ErrorRetryDelaySeconds must be between 1 second and 7200 seconds (2 hours). Current value: 10000"
+// DebounceDelaySeconds must be between 0 and 3600 seconds (1 hour). Use 0 to disable debouncing.
+// WatchingIntervalSeconds must be between 1 second and 86400 seconds (24 hours).  
+// ErrorRetryDelaySeconds must be between 1 second and 7200 seconds (2 hours)."
 ```
 
 ### Valid Configuration Examples
