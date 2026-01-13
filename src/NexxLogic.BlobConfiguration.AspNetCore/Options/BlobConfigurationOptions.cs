@@ -17,18 +17,6 @@ public class BlobConfigurationOptions
     public string? ConnectionString { get; set; }
 
     /// <summary>
-    /// Gets or sets the factory function that creates an instance of <see cref="BlobServiceClient"/>.
-    /// The factory provides a customizable way to initialize a <see cref="BlobServiceClient"/> instance
-    /// if the connection string is not directly specified.
-    /// </summary>
-    /// <value>
-    /// A delegate function that returns an instance of <see cref="BlobServiceClient"/>.
-    /// This property is used when a custom initialization or dependency injection is required to create
-    /// the <see cref="BlobServiceClient"/>. If not set, a connection string must be provided.
-    /// </value>
-    public Func<BlobServiceClient>? BlobServiceClientFactory { get; set; }
-
-    /// <summary>
     /// Gets or sets the Blob Container URL. The URL must contain a SAS token with at least Read and List permissions.
     /// </summary>
     /// <value>

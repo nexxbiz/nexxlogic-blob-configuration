@@ -56,13 +56,7 @@ public class BlobConfigurationOptionsValidatorTests
     public void Validate_ShouldSucceed_WhenReloadIntervalIsLowAndReloadOnChangeIsFalse()
     {
         // Arrange
-        var blobConfig = CreateValidOptions(reloadOnChange: reloadOnChange, reloadInterval: 1);
-
-        // Act
-        var result = GetSut().TestValidate(blobConfig);
-
-        // Assert
-        if (shouldHaveError)
+        var blobConfig = new BlobConfigurationOptions
         {
             ConnectionString = "connectionstring",
             ContainerName = "container",
@@ -78,7 +72,7 @@ public class BlobConfigurationOptionsValidatorTests
         // Assert
         Assert.Equal(ValidationResult.Success, result);
     }
-
+    
     [Fact]
     public void Validate_ShouldHaveError_WhenBothConnectionStringAndBlobContainerUrlAreProvided()
     {

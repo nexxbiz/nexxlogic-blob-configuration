@@ -42,6 +42,7 @@ public static class ConfigurationBuilderExtensions
 
         var blobContainerClientFactory = new BlobContainerClientFactory(options);
         var blobClientFactory = new BlobClientFactory(blobContainerClientFactory);
+
         var provider = new BlobFileProvider(blobClientFactory, blobContainerClientFactory, options, logger);
 
         foreach (var blobInfo in provider.GetDirectoryContents(""))
