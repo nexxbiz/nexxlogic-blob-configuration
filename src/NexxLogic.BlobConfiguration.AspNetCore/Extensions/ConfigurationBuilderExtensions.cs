@@ -40,10 +40,9 @@ public static class ConfigurationBuilderExtensions
         configure(options);
         BlobConfigurationOptionsValidator.ValidateAndThrow(options);
 
-        var blobContainerClientfactory = new BlobContainerClientFactory(options);
-        var blobClientfactory = new BlobClientFactory(blobContainerClientfactory);
-
-        var provider = new BlobFileProvider(blobClientfactory, blobContainerClientfactory, options, logger);
+        var blobContainerClientFactory = new BlobContainerClientFactory(options);
+        var blobClientFactory = new BlobClientFactory(blobContainerClientFactory);
+        var provider = new BlobFileProvider(blobClientFactory, blobContainerClientFactory, options, logger);
 
         foreach (var blobInfo in provider.GetDirectoryContents(""))
         {
@@ -66,8 +65,8 @@ public static class ConfigurationBuilderExtensions
                 };
 
                 source.FileProvider = new BlobFileProvider(
-                    blobClientfactory,
-                    blobContainerClientfactory, 
+                    blobClientFactory,
+                    blobContainerClientFactory, 
                     blobOptionsConfiguration,
                     logger
                 );
