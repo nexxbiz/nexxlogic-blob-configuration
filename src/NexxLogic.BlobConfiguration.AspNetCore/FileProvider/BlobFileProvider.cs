@@ -448,15 +448,12 @@ public class BlobFileProvider : IFileProvider, IDisposable
 
     private void DisposeEnhancedTokens()
     {
-        // Collect all live tokens from the cache using a single TryGetTarget per entry
-        var tokensToDispose = new List<EnhancedBlobChangeToken>();
-        foreach (var kvp in _tokenCache)
-        {
-            if (kvp.Value.TryGetTarget(out var token))
-            {
-                tokensToDispose.Add(token);
-            }
-        }
+        // Collect all live tokens from the cache using explicit filtering
+        var tokensToDispose = _tokenCache
+            .Select(kvp => new { kvp.Key, Token = kvp.Value.TryGetTarget(out var token) ? token : null })
+            .Where(x => x.Token != null)
+            .Select(x => x.Token!)
+            .ToList();
         
         // Clear the cache immediately to prevent new references
         _tokenCache.Clear();

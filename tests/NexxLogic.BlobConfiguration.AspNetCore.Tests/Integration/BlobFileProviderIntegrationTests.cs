@@ -83,14 +83,11 @@ public class BlobFileProviderIntegrationTests
         if (tokensList.First().token is EnhancedBlobChangeToken)
         {
             // Enhanced mode: Same path should return same cached token instance
-            foreach (var kvp in pathToTokens)
+            foreach (var kvp in pathToTokens.Where(kvp => kvp.Value.Count > 1))
             {
-                if (kvp.Value.Count > 1)
-                {
-                    // All tokens for the same path should be the same instance (cached)
-                    var firstToken = kvp.Value.First();
-                    Assert.All(kvp.Value, token => Assert.Same(firstToken, token));
-                }
+                // All tokens for the same path should be the same instance (cached)
+                var firstToken = kvp.Value.First();
+                Assert.All(kvp.Value, token => Assert.Same(firstToken, token));
             }
             
             // Total distinct tokens should equal number of unique paths
