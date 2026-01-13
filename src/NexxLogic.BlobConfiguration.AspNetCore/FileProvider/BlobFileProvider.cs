@@ -41,6 +41,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
     private readonly BlobConfigurationOptions _blobConfig;
     private readonly ILogger<BlobFileProvider> _logger;
     private readonly BlobServiceClient? _blobServiceClient;
+    // Enhanced blob watching configuration - using TimeSpan for better expressiveness
     private readonly TimeSpan _debounceDelay;
     private readonly TimeSpan _watchingInterval;
     private readonly TimeSpan _errorRetryDelay;
@@ -79,10 +80,10 @@ public class BlobFileProvider : IFileProvider, IDisposable
         // Validate configuration values at runtime
         ValidateConfiguration(blobConfig);
 
-        // Initialize enhanced options with validated values
-        _debounceDelay = TimeSpan.FromSeconds(_blobConfig.DebounceDelaySeconds);
-        _watchingInterval = TimeSpan.FromSeconds(_blobConfig.WatchingIntervalSeconds);
-        _errorRetryDelay = TimeSpan.FromSeconds(_blobConfig.ErrorRetryDelaySeconds);
+        // Initialize enhanced options directly from TimeSpan properties
+        _debounceDelay = _blobConfig.DebounceDelay;
+        _watchingInterval = _blobConfig.WatchingInterval;
+        _errorRetryDelay = _blobConfig.ErrorRetryDelay;
         _strategyFactory = new ChangeDetectionStrategyFactory(_blobConfig);
         _maxContentHashSizeMb = _blobConfig.MaxFileContentHashSizeMb;
         
@@ -120,7 +121,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
                     var serviceUri = new Uri($"{containerUri.Scheme}://{containerUri.Host}");
                     var credential = new DefaultAzureCredential();
                     
-                    _blobServiceClient = new BlobServiceClient(serviceUri, credential, null);
+                    _blobServiceClient = new BlobServiceClient(serviceUri, credential);
                     _logger.LogInformation(
                         "BlobServiceClient created using DefaultAzureCredential. Ensure Azure credentials are configured " +
                         "(Managed Identity, Azure CLI, environment variables, or IDE authentication).");
@@ -147,6 +148,25 @@ public class BlobFileProvider : IFileProvider, IDisposable
         var validationResults = new List<ValidationResult>();
         
         bool isValid = Validator.TryValidateObject(config, validationContext, validationResults, validateAllProperties: true);
+
+        // Additional explicit validation for TimeSpan properties to ensure Range validation works correctly
+        if (config.DebounceDelay < TimeSpan.Zero || config.DebounceDelay > TimeSpan.FromHours(1))
+        {
+            validationResults.Add(new ValidationResult("DebounceDelay must be between 0 seconds and 1 hour. Use 0 to disable debouncing.", new[] { nameof(config.DebounceDelay) }));
+            isValid = false;
+        }
+
+        if (config.WatchingInterval < TimeSpan.FromSeconds(1) || config.WatchingInterval > TimeSpan.FromHours(24))
+        {
+            validationResults.Add(new ValidationResult("WatchingInterval must be between 1 second and 24 hours.", new[] { nameof(config.WatchingInterval) }));
+            isValid = false;
+        }
+
+        if (config.ErrorRetryDelay < TimeSpan.FromSeconds(1) || config.ErrorRetryDelay > TimeSpan.FromHours(2))
+        {
+            validationResults.Add(new ValidationResult("ErrorRetryDelay must be between 1 second and 2 hours.", new[] { nameof(config.ErrorRetryDelay) }));
+            isValid = false;
+        }
         
         if (!isValid)
         {
@@ -230,7 +250,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
                 (_, current) =>
                 {
                     // If the current weak reference still has a live target, keep using it.
-                    if (current.TryGetTarget(out var currentToken) && currentToken is not null)
+                    if (current.TryGetTarget(out var _))
                     {
                         return current;
                     }
@@ -240,7 +260,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
                 });
 
             // Try to get the token from the (possibly updated) weak reference.
-            if (weakRef.TryGetTarget(out var newToken) && newToken is not null)
+            if (weakRef.TryGetTarget(out var newToken))
             {
                 // Clean up dead references periodically (simple cleanup strategy)
                 if (_tokenCache.Count > 100)
@@ -261,7 +281,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
                 _ => CreateTokenWeakReference(blobPath, filter),
                 (_, current) =>
                 {
-                    if (current.TryGetTarget(out var currentToken) && currentToken is not null)
+                    if (current.TryGetTarget(out var _))
                     {
                         return current;
                     }
@@ -269,7 +289,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
                     return CreateTokenWeakReference(blobPath, filter);
                 });
 
-            if (fallbackWeakRef.TryGetTarget(out var fallbackToken) && fallbackToken is not null)
+            if (fallbackWeakRef.TryGetTarget(out var fallbackToken))
             {
                 return fallbackToken;
             }
@@ -455,7 +475,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
         var tokensToDispose = new List<EnhancedBlobChangeToken>();
         foreach (var kvp in _tokenCache)
         {
-            if (kvp.Value.TryGetTarget(out var token) && token is not null)
+            if (kvp.Value.TryGetTarget(out var token))
             {
                 tokensToDispose.Add(token);
             }

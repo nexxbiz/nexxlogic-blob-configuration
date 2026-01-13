@@ -59,10 +59,10 @@ public static class ConfigurationBuilderExtensions
                     ReloadInterval = options.ReloadInterval,
                     ReloadOnChange = options.ReloadOnChange,
                     // Enhanced properties
-                    DebounceDelaySeconds = options.DebounceDelaySeconds,
+                    DebounceDelay = options.DebounceDelay,
                     MaxFileContentHashSizeMb = options.MaxFileContentHashSizeMb,
-                    WatchingIntervalSeconds = options.WatchingIntervalSeconds,
-                    ErrorRetryDelaySeconds = options.ErrorRetryDelaySeconds
+                    WatchingInterval = options.WatchingInterval,
+                    ErrorRetryDelay = options.ErrorRetryDelay
                 };
 
                 source.FileProvider = new BlobFileProvider(

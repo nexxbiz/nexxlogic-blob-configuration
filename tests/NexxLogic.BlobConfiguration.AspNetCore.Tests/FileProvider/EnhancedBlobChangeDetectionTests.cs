@@ -101,9 +101,9 @@ public class EnhancedBlobChangeDetectionTests
         var invalidOptions = new BlobConfigurationOptions
         {
             ReloadInterval = -1,
-            DebounceDelaySeconds = -5,
-            WatchingIntervalSeconds = 0,
-            ErrorRetryDelaySeconds = -10,
+            DebounceDelay = TimeSpan.FromSeconds(-5),
+            WatchingInterval = TimeSpan.FromSeconds(0),
+            ErrorRetryDelay = TimeSpan.FromSeconds(-10),
             MaxFileContentHashSizeMb = 0,
             ConnectionString = ConnectionString,
             ContainerName = ContainerName
@@ -119,15 +119,15 @@ public class EnhancedBlobChangeDetectionTests
     [InlineData(30000, 30, 60, 120, 5)] // Typical production values
     [InlineData(86400000, 3600, 86400, 7200, 1024)] // Maximum valid values
     public void BlobFileProvider_ShouldAcceptConfiguration_WithValidValues(
-        int reloadInterval, int debounceDelay, int watchingInterval, int errorRetryDelay, int maxHashSize)
+        int reloadInterval, int debounceDelaySeconds, int watchingIntervalSeconds, int errorRetryDelaySeconds, int maxHashSize)
     {
         // Arrange
         var validOptions = new BlobConfigurationOptions
         {
             ReloadInterval = reloadInterval,
-            DebounceDelaySeconds = debounceDelay,
-            WatchingIntervalSeconds = watchingInterval,
-            ErrorRetryDelaySeconds = errorRetryDelay,
+            DebounceDelay = TimeSpan.FromSeconds(debounceDelaySeconds),
+            WatchingInterval = TimeSpan.FromSeconds(watchingIntervalSeconds),
+            ErrorRetryDelay = TimeSpan.FromSeconds(errorRetryDelaySeconds),
             MaxFileContentHashSizeMb = maxHashSize,
             ConnectionString = ConnectionString,
             ContainerName = ContainerName
@@ -275,9 +275,9 @@ public class EnhancedBlobChangeDetectionTests
             ConnectionString = "DefaultEndpointsProtocol=https;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=https://127.0.0.1:10000/devstoreaccount1;",
             ContainerName = ContainerName,
             ReloadInterval = 1000,
-            DebounceDelaySeconds = 30,
-            WatchingIntervalSeconds = 60,
-            ErrorRetryDelaySeconds = 120,
+            DebounceDelay = TimeSpan.FromSeconds(30),
+            WatchingInterval = TimeSpan.FromMinutes(1),
+            ErrorRetryDelay = TimeSpan.FromMinutes(2),
             MaxFileContentHashSizeMb = 5,
             // Factory will intelligently choose strategy based on configuration
         };

@@ -12,16 +12,6 @@ public class ContentBasedChangeDetectionStrategy(ILogger logger) : IChangeDetect
     {
         try
         {
-            // Keep ETag-based state in sync even when using content hashing, so that
-            // switching between strategies does not lose change-detection history.
-            var etagKey = $"{context.BlobPath}:etag";
-            var currentEtag = context.Properties.ETag.ToString();
-            var previousEtag = context.BlobFingerprints.GetValueOrDefault(etagKey);
-            if (currentEtag != previousEtag)
-            {
-                context.BlobFingerprints[etagKey] = currentEtag;
-            }
-            
             await using var stream = await context.BlobClient.OpenReadAsync(cancellationToken: context.CancellationToken);
             using var sha256 = SHA256.Create();
             var hashBytes = await sha256.ComputeHashAsync(stream, context.CancellationToken);

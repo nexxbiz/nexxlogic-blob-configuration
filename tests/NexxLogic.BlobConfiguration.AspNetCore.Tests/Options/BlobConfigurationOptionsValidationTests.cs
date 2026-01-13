@@ -14,15 +14,15 @@ public class BlobConfigurationOptionsValidationTests
     [InlineData(86400000, 3600, 86400, 7200, 1024)] // Maximum values
     [InlineData(1000, 0, 5, 5, 1)] // Zero debounce (disabled)
     public void BlobConfigurationOptions_ShouldPassValidation_WithValidValues(
-        int reloadInterval, int debounceDelay, int watchingInterval, int errorRetryDelay, int maxHashSize)
+        int reloadInterval, int debounceDelaySeconds, int watchingIntervalSeconds, int errorRetryDelaySeconds, int maxHashSize)
     {
         // Arrange
         var options = new BlobConfigurationOptions
         {
             ReloadInterval = reloadInterval,
-            DebounceDelaySeconds = debounceDelay,
-            WatchingIntervalSeconds = watchingInterval,
-            ErrorRetryDelaySeconds = errorRetryDelay,
+            DebounceDelay = TimeSpan.FromSeconds(debounceDelaySeconds),
+            WatchingInterval = TimeSpan.FromSeconds(watchingIntervalSeconds),
+            ErrorRetryDelay = TimeSpan.FromSeconds(errorRetryDelaySeconds),
             MaxFileContentHashSizeMb = maxHashSize,
             ConnectionString = "DefaultEndpointsProtocol=https;AccountName=test;AccountKey=key;EndpointSuffix=core.windows.net",
             ContainerName = "test"
@@ -52,48 +52,48 @@ public class BlobConfigurationOptionsValidationTests
     [Theory]
     [InlineData(-1)] // Negative debounce delay
     [InlineData(3601)] // Exceeds maximum (1 hour + 1 second)
-    public void BlobConfigurationOptions_ShouldFailValidation_WithInvalidDebounceDelaySeconds(int invalidValue)
+    public void BlobConfigurationOptions_ShouldFailValidation_WithInvalidDebounceDelay(int invalidSeconds)
     {
         // Arrange
         var options = CreateValidOptions();
-        options.DebounceDelaySeconds = invalidValue;
+        options.DebounceDelay = TimeSpan.FromSeconds(invalidSeconds);
 
         // Act & Assert
         var exception = Assert.Throws<ArgumentException>(() => CreateBlobFileProvider(options));
         Assert.Contains("Invalid BlobConfiguration values:", exception.Message);
-        Assert.Contains("DebounceDelaySeconds", exception.Message);
+        Assert.Contains("DebounceDelay", exception.Message);
     }
 
     [Theory]
     [InlineData(0)] // Zero watching interval
     [InlineData(-1)] // Negative watching interval
     [InlineData(86401)] // Exceeds maximum (24 hours + 1 second)
-    public void BlobConfigurationOptions_ShouldFailValidation_WithInvalidWatchingIntervalSeconds(int invalidValue)
+    public void BlobConfigurationOptions_ShouldFailValidation_WithInvalidWatchingInterval(int invalidSeconds)
     {
         // Arrange
         var options = CreateValidOptions();
-        options.WatchingIntervalSeconds = invalidValue;
+        options.WatchingInterval = TimeSpan.FromSeconds(invalidSeconds);
 
         // Act & Assert
         var exception = Assert.Throws<ArgumentException>(() => CreateBlobFileProvider(options));
         Assert.Contains("Invalid BlobConfiguration values:", exception.Message);
-        Assert.Contains("WatchingIntervalSeconds", exception.Message);
+        Assert.Contains("WatchingInterval", exception.Message);
     }
 
     [Theory]
     [InlineData(0)] // Zero error retry delay
     [InlineData(-1)] // Negative error retry delay
     [InlineData(7201)] // Exceeds maximum (2 hours + 1 second)
-    public void BlobConfigurationOptions_ShouldFailValidation_WithInvalidErrorRetryDelaySeconds(int invalidValue)
+    public void BlobConfigurationOptions_ShouldFailValidation_WithInvalidErrorRetryDelay(int invalidSeconds)
     {
         // Arrange
         var options = CreateValidOptions();
-        options.ErrorRetryDelaySeconds = invalidValue;
+        options.ErrorRetryDelay = TimeSpan.FromSeconds(invalidSeconds);
 
         // Act & Assert
         var exception = Assert.Throws<ArgumentException>(() => CreateBlobFileProvider(options));
         Assert.Contains("Invalid BlobConfiguration values:", exception.Message);
-        Assert.Contains("ErrorRetryDelaySeconds", exception.Message);
+        Assert.Contains("ErrorRetryDelay", exception.Message);
     }
 
     [Theory]
@@ -119,9 +119,9 @@ public class BlobConfigurationOptionsValidationTests
         var options = new BlobConfigurationOptions
         {
             ReloadInterval = -1, // Invalid
-            DebounceDelaySeconds = -5, // Invalid
-            WatchingIntervalSeconds = 0, // Invalid
-            ErrorRetryDelaySeconds = -10, // Invalid
+            DebounceDelay = TimeSpan.FromSeconds(-5), // Invalid
+            WatchingInterval = TimeSpan.FromSeconds(0), // Invalid
+            ErrorRetryDelay = TimeSpan.FromSeconds(-10), // Invalid
             MaxFileContentHashSizeMb = 0, // Invalid
             ConnectionString = "test",
             ContainerName = "test"
@@ -133,9 +133,9 @@ public class BlobConfigurationOptionsValidationTests
         // Should contain error messages for all invalid properties
         Assert.Contains("Invalid BlobConfiguration values:", exception.Message);
         Assert.Contains("ReloadInterval", exception.Message);
-        Assert.Contains("DebounceDelaySeconds", exception.Message);
-        Assert.Contains("WatchingIntervalSeconds", exception.Message);
-        Assert.Contains("ErrorRetryDelaySeconds", exception.Message);
+        Assert.Contains("DebounceDelay", exception.Message);
+        Assert.Contains("WatchingInterval", exception.Message);
+        Assert.Contains("ErrorRetryDelay", exception.Message);
         Assert.Contains("MaxFileContentHashSizeMb", exception.Message);
     }
 
@@ -144,11 +144,11 @@ public class BlobConfigurationOptionsValidationTests
     {
         // Arrange
         var options = CreateValidOptions();
-        options.DebounceDelaySeconds = 5000; // Exceeds maximum of 3600
+        options.DebounceDelay = TimeSpan.FromSeconds(5000); // Exceeds maximum of 3600
 
         // Act & Assert
         var exception = Assert.Throws<ArgumentException>(() => CreateBlobFileProvider(options));
-        Assert.Contains("DebounceDelaySeconds", exception.Message); // Should include the property name in error message
+        Assert.Contains("DebounceDelay", exception.Message); // Should include the property name in error message
     }
 
     [Fact]
@@ -170,9 +170,9 @@ public class BlobConfigurationOptionsValidationTests
 
         // Act & Assert - All defaults should be within valid ranges
         Assert.Equal(30_000, options.ReloadInterval);
-        Assert.Equal(30, options.DebounceDelaySeconds);
-        Assert.Equal(30, options.WatchingIntervalSeconds);
-        Assert.Equal(60, options.ErrorRetryDelaySeconds);
+        Assert.Equal(TimeSpan.FromSeconds(30), options.DebounceDelay);
+        Assert.Equal(TimeSpan.FromSeconds(30), options.WatchingInterval);
+        Assert.Equal(TimeSpan.FromMinutes(1), options.ErrorRetryDelay);
         Assert.Equal(1, options.MaxFileContentHashSizeMb);
         // Factory is created internally - no configuration property needed
 
@@ -192,13 +192,13 @@ public class BlobConfigurationOptionsValidationTests
         
         // Arrange
         var options = CreateValidOptions();
-        options.DebounceDelaySeconds = -1; // Invalid
+        options.DebounceDelay = TimeSpan.FromSeconds(-1); // Invalid
 
         // Act & Assert
         var exception = Assert.Throws<ArgumentException>(() => CreateBlobFileProvider(options));
         
         // Should use the Range attribute error message format
-        Assert.Contains("DebounceDelaySeconds must be between 0 and 3600", exception.Message);
+        Assert.Contains("DebounceDelay must be between", exception.Message);
         Assert.Contains("Use 0 to disable debouncing", exception.Message);
     }
 
@@ -207,9 +207,9 @@ public class BlobConfigurationOptionsValidationTests
         return new BlobConfigurationOptions
         {
             ReloadInterval = 30000,
-            DebounceDelaySeconds = 30,
-            WatchingIntervalSeconds = 60,
-            ErrorRetryDelaySeconds = 120,
+            DebounceDelay = TimeSpan.FromSeconds(30),
+            WatchingInterval = TimeSpan.FromSeconds(60),
+            ErrorRetryDelay = TimeSpan.FromSeconds(120),
             MaxFileContentHashSizeMb = 5,
             ConnectionString = "DefaultEndpointsProtocol=https;AccountName=test;AccountKey=key;EndpointSuffix=core.windows.net",
             ContainerName = "test"

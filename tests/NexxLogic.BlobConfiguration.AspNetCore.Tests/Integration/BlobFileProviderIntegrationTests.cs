@@ -306,9 +306,9 @@ public class BlobFileProviderIntegrationTests
             ConnectionString = "DefaultEndpointsProtocol=https;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=https://127.0.0.1:10000/devstoreaccount1;",
             ContainerName = ContainerName,
             ReloadInterval = 1000,
-            DebounceDelaySeconds = 1, // Fast for testing
-            WatchingIntervalSeconds = 1, // Fast for testing
-            ErrorRetryDelaySeconds = 1, // Fast for testing
+            DebounceDelay = TimeSpan.FromSeconds(1), // Fast for testing
+            WatchingInterval = TimeSpan.FromSeconds(1), // Fast for testing
+            ErrorRetryDelay = TimeSpan.FromSeconds(1), // Fast for testing
             MaxFileContentHashSizeMb = 5,
             // Factory will intelligently choose strategy based on configuration
         };

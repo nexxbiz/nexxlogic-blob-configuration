@@ -22,10 +22,10 @@ builder.Configuration.AddJsonBlob(config =>
     
     // Strategy selection is handled automatically
     config.MaxFileContentHashSizeMb = 5;
-    config.DebounceDelaySeconds = 15;
-    // In enhanced mode, WatchingIntervalSeconds controls how often the blob is polled for changes
-    config.WatchingIntervalSeconds = 20; // Poll every 20 seconds
-    config.ErrorRetryDelaySeconds = 30; // Retry after 30 seconds on error
+    config.DebounceDelay = TimeSpan.FromSeconds(15);
+    // In enhanced mode, WatchingInterval controls how often the blob is polled for changes
+    config.WatchingInterval = TimeSpan.FromSeconds(20); // Poll every 20 seconds
+    config.ErrorRetryDelay = TimeSpan.FromSeconds(30); // Retry after 30 seconds on error
 }, logger);
 
 builder.Configuration.AddJsonBlob(config =>
@@ -36,9 +36,9 @@ builder.Configuration.AddJsonBlob(config =>
     // Enhanced features for second blob - using ETag for fast detection
     // Strategy selection is handled automatically
     config.MaxFileContentHashSizeMb = 1; // Use minimum valid value; strategy selection remains automatic
-    config.DebounceDelaySeconds = 10;
-    config.WatchingIntervalSeconds = 60; // Poll every 60 seconds for less frequent checks
-    config.ErrorRetryDelaySeconds = 120; // Longer retry delay for non-critical config
+    config.DebounceDelay = TimeSpan.FromSeconds(10);
+    config.WatchingInterval = TimeSpan.FromMinutes(1); // Poll every minute for less frequent checks
+    config.ErrorRetryDelay = TimeSpan.FromMinutes(2); // 2-minute retry delay for non-critical config
 }, logger);
 builder.Services.Configure<ExampleOptions>(builder.Configuration.GetSection("ExampleSettings"));
 

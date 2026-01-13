@@ -373,9 +373,9 @@ public class BlobFileProviderTests
             ConnectionString = "DefaultEndpointsProtocol=https;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=https://127.0.0.1:10000/devstoreaccount1;",
             ContainerName = "configuration", // Required for enhanced tokens
             ReloadInterval = 1000,
-            DebounceDelaySeconds = 1,
-            WatchingIntervalSeconds = 1,
-            ErrorRetryDelaySeconds = 1,
+            DebounceDelay = TimeSpan.FromSeconds(1),
+            WatchingInterval = TimeSpan.FromSeconds(1),
+            ErrorRetryDelay = TimeSpan.FromSeconds(1),
             MaxFileContentHashSizeMb = 5
         };
     }
@@ -404,9 +404,9 @@ public class BlobFileProviderTests
             ConnectionString = "DefaultEndpointsProtocol=https;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=https://127.0.0.1:10000/devstoreaccount1;",
             ContainerName = options.ContainerName,
             ReloadInterval = options.ReloadInterval,
-            DebounceDelaySeconds = options.DebounceDelaySeconds,
-            WatchingIntervalSeconds = options.WatchingIntervalSeconds,
-            ErrorRetryDelaySeconds = options.ErrorRetryDelaySeconds,
+            DebounceDelay = options.DebounceDelay,
+            WatchingInterval = options.WatchingInterval,
+            ErrorRetryDelay = options.ErrorRetryDelay,
             MaxFileContentHashSizeMb = options.MaxFileContentHashSizeMb
         };
 
