@@ -16,12 +16,12 @@ public static class ConfigurationBuilderExtensions
         configure(options);
         RequiredBlobNameBlobConfigurationOptionsValidator.ValidateAndThrow(options);
         var blobContainerClientFactory = new BlobContainerClientFactory(options);
-        var blobClientfactory = new BlobClientFactory(blobContainerClientFactory);
+        var blobClientFactory = new BlobClientFactory(blobContainerClientFactory);
 
         return builder.AddJsonFile(source =>
         {
             source.FileProvider = new BlobFileProvider(
-                blobClientfactory,
+                blobClientFactory,
                 blobContainerClientFactory, 
                 options, 
                 logger
