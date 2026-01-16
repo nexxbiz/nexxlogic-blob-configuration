@@ -45,7 +45,7 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
     private readonly Dictionary<Guid, (Action<object?> callback, object? state)> _callbacks = new();
 
     public bool HasChanged => _hasChanged;
-    public bool ActiveChangeCallbacks => _disposed == 0;
+    public bool ActiveChangeCallbacks => Interlocked.CompareExchange(ref _disposed, 0, 0) == 0;
 
     public EnhancedBlobChangeToken(
         BlobServiceClient blobServiceClient,
@@ -130,7 +130,7 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
     private async Task<bool> CheckForContentChanges()
     {
         // Early exit if disposed to avoid unnecessary work
-        if (_disposed == 1 || _cts.Token.IsCancellationRequested)
+        if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0 || _cts.Token.IsCancellationRequested)
         {
             return false;
         }
@@ -170,7 +170,7 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
         catch (Exception ex)
         {
             // Only log if we're not disposed - errors during disposal are expected
-            if (_disposed == 0 && !_cts.Token.IsCancellationRequested)
+            if (Interlocked.CompareExchange(ref _disposed, 0, 0) == 0 && !_cts.Token.IsCancellationRequested)
             {
                 _logger.LogWarning(ex, "Failed to check blob changes for {BlobPath}", _blobPath);
             }
@@ -180,11 +180,11 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
 
     private void TriggerDebouncedChange()
     {
-        if (_disposed == 1) return; // Early exit if already disposed
+        if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0) return; // Early exit if already disposed
         
         lock (_lock)
         {
-            if (_disposed == 1) return; // Double-check after acquiring lock
+            if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0) return; // Double-check after acquiring lock
             
             // Create new debounce timer first to avoid race condition window
             var newTimer = new Timer(_ =>
@@ -192,7 +192,7 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
                 try
                 {
                     // Check disposal state
-                    if (_disposed == 1)
+                    if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0)
                     {
                         return;
                     }
@@ -206,7 +206,7 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
                 catch (Exception ex)
                 {
                     // Only log errors if we're not disposed
-                    if (_disposed == 0)
+                    if (Interlocked.CompareExchange(ref _disposed, 0, 0) == 0)
                     {
                         _logger.LogError(ex, "Error executing debounced change callback for blob {BlobPath}", _blobPath);
                     }
@@ -225,14 +225,14 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
 
     private void NotifyCallbacks()
     {
-        if (_disposed == 1) return; // Guard against disposal
+        if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0) return; // Guard against disposal
         
         // Capture callbacks inside the lock to avoid modification during iteration
         (Action<object?> callback, object? state)[] callbacksSnapshot;
         
         lock (_lock)
         {
-            if (_disposed == 1) return; // Double-check after acquiring lock
+            if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0) return; // Double-check after acquiring lock
             
             // Take a snapshot of callbacks to execute outside the lock
             callbacksSnapshot = _callbacks.Values.ToArray();
@@ -254,14 +254,14 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
 
     public IDisposable RegisterChangeCallback(Action<object?> callback, object? state)
     {
-        if (_disposed == 1) throw new ObjectDisposedException(nameof(EnhancedBlobChangeToken));
+        if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0) throw new ObjectDisposedException(nameof(EnhancedBlobChangeToken));
 
         bool invokeImmediately;
         Guid callbackId;
 
         lock (_lock)
         {
-            if (_disposed == 1) throw new ObjectDisposedException(nameof(EnhancedBlobChangeToken));
+            if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0) throw new ObjectDisposedException(nameof(EnhancedBlobChangeToken));
             invokeImmediately = _hasChanged;
 
             callbackId = Guid.NewGuid();

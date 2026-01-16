@@ -245,7 +245,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
 
     public IChangeToken Watch(string filter)
     {
-        if (_disposed == 1)
+        if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0)
         {
             throw new ObjectDisposedException(nameof(BlobFileProvider));
         }
