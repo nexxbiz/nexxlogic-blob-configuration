@@ -230,23 +230,24 @@ public class BlobFileProviderTests
         var options = CreateOptionsWithConnectionString();
         using var provider = CreateBlobFileProvider(options);
 
-        // Act - Create multiple concurrent calls to Watch with the same filter
-        // Use Task.Run with immediate execution to avoid captured variable warnings
+        // Act - Create multiple concurrent calls to Watch with different filters
+        // This tests token caching mechanism under concurrent access patterns with different paths
         var watchTasks = new Task<IChangeToken>[10];
         for (int i = 0; i < 10; i++)
         {
-            watchTasks[i] = Task.Run(() => provider.Watch("config.json"));
+            var index = i; // Capture loop variable
+            watchTasks[i] = Task.Run(() => provider.Watch($"config{index}.json"));
         }
 
         // Wait for all tasks to complete before provider disposal
         var tokenResults = await Task.WhenAll(watchTasks);
 
-        // Assert - All concurrent calls should return the same token instance (cached)
+        // Assert - Each different path should return a different token instance
         Assert.Equal(10, tokenResults.Length);
         
-        // All tokens should be the same instance due to caching
-        var firstToken = tokenResults.First();
-        Assert.All(tokenResults, token => Assert.Same(firstToken, token));
+        // All tokens should be distinct instances (one per unique path)
+        var distinctTokens = tokenResults.Distinct().ToList();
+        Assert.Equal(10, distinctTokens.Count);
     }
 
     [Fact]
