@@ -65,7 +65,11 @@ public class BlobFileProviderTests
     public async Task Watch_ShouldRaiseChange_WhenNewVersionIsAvailable()
     {
         // Arrange
-        var sut = CreateSut(out var blobClientMock);
+        var options = new BlobConfigurationOptions
+        {
+            ReloadInterval = 1000
+        };
+        var sut = CreateSut(out var blobClientMock, options);
         sut.GetFileInfo(BlobName);
 
         var blobProperties = BlobsModelFactory.BlobProperties(
@@ -79,7 +83,7 @@ public class BlobFileProviderTests
             .Returns(Response.FromValue(blobProperties, Substitute.For<Response>()));
 
         // Act
-        await Task.Delay(1001);
+        await Task.Delay(options.ReloadInterval + 1);
 
         // Assert
         Assert.True(changeToken.HasChanged);
