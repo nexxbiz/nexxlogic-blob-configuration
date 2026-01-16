@@ -272,7 +272,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
                 (_, current) =>
                 {
                     // If the current weak reference still has a live target, keep using it.
-                    if (current.TryGetTarget(out var _))
+                    if (current.TryGetTarget(out _))
                     {
                         return current;
                     }
