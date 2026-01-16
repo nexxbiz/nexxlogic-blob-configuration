@@ -25,13 +25,9 @@ public class ContentBasedChangeDetectionStrategy(ILogger logger) : IChangeDetect
 
                 var oldHashDisplay = previousHash == null
                     ? "null"
-                    : (previousHash.Length >= 8
-                        ? previousHash[..8] + "..."
-                        : previousHash);
+                    : HashDisplay(previousHash);
 
-                var newHashDisplay = currentHash.Length >= 8
-                    ? currentHash[..8] + "..."
-                    : currentHash;
+                var newHashDisplay = HashDisplay(currentHash);
 
                 logger.LogInformation("Content change detected for blob {BlobPath}. Hash changed from {OldHash} to {NewHash}",
                     context.BlobPath, oldHashDisplay, newHashDisplay);
@@ -45,5 +41,12 @@ public class ContentBasedChangeDetectionStrategy(ILogger logger) : IChangeDetect
             logger.LogWarning(ex, "Failed to check content changes for blob {BlobPath}", context.BlobPath);
             return false;
         }
+    }
+
+    private static string HashDisplay(string hash)
+    {
+        return hash.Length >= 8
+            ? hash[..8] + "..."
+            : hash;
     }
 }

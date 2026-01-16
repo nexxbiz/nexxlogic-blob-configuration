@@ -7,9 +7,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddEndpointsApiExplorer();
 
-var loggerFactory = LoggerFactory.Create(loggingBuilder =>
+var loggerFactory = LoggerFactory.Create(loggerBuilder =>
 {
-    loggingBuilder.AddConsole();
+    loggerBuilder.AddConsole();
 });
 
 var logger = loggerFactory.CreateLogger<BlobFileProvider>();

@@ -115,7 +115,7 @@ public class EnhancedBlobChangeDetectionTests
     }
 
     [Theory]
-    [InlineData(1, 0, 1, 1, 1)] // Minimum valid values (backward compatible)
+    [InlineData(1000, 0, 1, 1, 1)] // Minimum valid values (backward compatible)
     [InlineData(30000, 30, 60, 120, 5)] // Typical production values
     [InlineData(86400000, 3600, 86400, 7200, 1024)] // Maximum valid values
     public void BlobFileProvider_ShouldAcceptConfiguration_WithValidValues(

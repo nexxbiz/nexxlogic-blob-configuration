@@ -9,6 +9,7 @@ using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
 using NSubstitute;
+using NSubstitute.Core;
 using NSubstitute.ExceptionExtensions;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.FileProvider;
@@ -78,7 +79,7 @@ public class BlobFileProviderTests
             .Returns(Response.FromValue(blobProperties, Substitute.For<Response>()));
 
         // Act
-        await Task.Delay(500);
+        await Task.Delay(1001);
 
         // Assert
         Assert.True(changeToken.HasChanged);
@@ -152,7 +153,7 @@ public class BlobFileProviderTests
         // Arrange        
         var options = new BlobConfigurationOptions
         {            
-            ReloadInterval = 1,
+            ReloadInterval = 1000,
             Optional = true
         };
         var sut = CreateSut(out var blobClientMock, options);
@@ -169,12 +170,13 @@ public class BlobFileProviderTests
 
         // Act
         _ = (BlobChangeToken)sut.Watch(BlobName);
-        await Task.Delay(100);
+        await Task.Delay(3000);
 
         // Assert
         var existCalls = blobClientMock.ReceivedCalls()
             .Where(x => x.GetMethodInfo().Name == nameof(BlobClient.Exists));
-        Assert.True(existCalls.Count() > 1);
+        var enumerable = existCalls as ICall[] ?? existCalls.ToArray();
+        Assert.True(enumerable.Length > 1);
     }
 
     [Fact]
@@ -183,7 +185,7 @@ public class BlobFileProviderTests
         // Arrange        
         var options = new BlobConfigurationOptions
         {
-            ReloadInterval = 1,
+            ReloadInterval = 1000,
             Optional = true
         };
         var sut = CreateSut(out var blobClientMock, options);
@@ -199,7 +201,7 @@ public class BlobFileProviderTests
         sut.GetFileInfo(BlobName);
         
         var changeToken = (BlobChangeToken)sut.Watch(BlobName);
-        await Task.Delay(20);
+        await Task.Delay(1000);
 
         // Pre-Assert
         blobClientMock
@@ -211,7 +213,7 @@ public class BlobFileProviderTests
         blobClientMock            
             .Exists(changeToken.CancellationToken)
             .Returns(Response.FromValue(true, Substitute.For<Response>()));
-        await Task.Delay(30); // making sure that exists method returns with a TRUE value
+        await Task.Delay(2000); // making sure that exists method returns with a TRUE value
 
         // Assert
         Assert.True(changeToken.HasChanged);
@@ -355,7 +357,7 @@ public class BlobFileProviderTests
 
         var defaultBlobConfig = new BlobConfigurationOptions
         {
-            ReloadInterval = 1,
+            ReloadInterval = 1000,
             // Don't provide ConnectionString or BlobContainerUrl to force legacy mode
             // This ensures existing tests continue to work with legacy BlobChangeToken
         };

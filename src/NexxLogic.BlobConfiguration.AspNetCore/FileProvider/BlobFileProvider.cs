@@ -40,7 +40,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
     private readonly IBlobContainerClientFactory _blobContainerClientFactory;
     private readonly BlobConfigurationOptions _blobConfig;
     private readonly ILogger<BlobFileProvider> _logger;
-    private readonly BlobServiceClient? _blobServiceClient;
+    private BlobServiceClient? _blobServiceClient;
     // Enhanced blob watching configuration - using TimeSpan for better expressiveness
     private readonly TimeSpan _debounceDelay;
     private readonly TimeSpan _watchingInterval;
@@ -76,8 +76,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
         _blobConfig = blobConfig;
         _blobContainerClientFactory = blobContainerClientFactory;
         _logger = logger;
-
-        // Validate configuration values at runtime
+        
         ValidateConfiguration(blobConfig);
 
         // Initialize enhanced options directly from TimeSpan properties
@@ -101,31 +100,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
             {
                 var containerUri = new Uri(_blobConfig.BlobContainerUrl);
 
-                // If a SAS token is present (query string), fallback to legacy mode
-                // Enhanced features require either ConnectionString or BlobContainerUrl without SAS + DefaultAzureCredential
-                if (!string.IsNullOrEmpty(containerUri.Query))
-                {
-                    _logger.LogInformation(
-                        "BlobContainerUrl contains a SAS token; skipping BlobServiceClient creation for enhanced features. " +
-                        "Falling back to legacy mode.");
-                    // Don't create _blobServiceClient - this forces fallback to legacy mode
-                }
-                else
-                {
-                    // No SAS token present - use DefaultAzureCredential for authentication
-                    // This requires one of the following to be configured in the environment:
-                    // - Managed Identity (recommended for Azure-hosted applications)
-                    // - Azure CLI authentication (for local development)
-                    // - Environment variables (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID)
-                    // - Visual Studio or VS Code authentication
-                    var serviceUri = new Uri($"{containerUri.Scheme}://{containerUri.Host}");
-                    var credential = new DefaultAzureCredential();
-                    
-                    _blobServiceClient = new BlobServiceClient(serviceUri, credential);
-                    _logger.LogInformation(
-                        "BlobServiceClient created using DefaultAzureCredential. Ensure Azure credentials are configured " +
-                        "(Managed Identity, Azure CLI, environment variables, or IDE authentication).");
-                }
+                CreateBlobServiceClientBasedOnUri(containerUri);
             }
         }
         catch (Exception ex)
@@ -141,13 +116,50 @@ public class BlobFileProvider : IFileProvider, IDisposable
             _debounceDelay.TotalSeconds, _strategyFactory.GetType().Name);
     }
 
+    private void CreateBlobServiceClientBasedOnUri(Uri containerUri)
+    {
+        // If a SAS token is present (query string), fallback to legacy mode
+        // Enhanced features require either ConnectionString or BlobContainerUrl without SAS + DefaultAzureCredential
+        if (!string.IsNullOrEmpty(containerUri.Query))
+        {
+            _logger.LogInformation(
+                "BlobContainerUrl contains a SAS token; " +
+                "skipping BlobServiceClient creation for enhanced features. " +
+                "Falling back to legacy mode.");
+            // Don't create _blobServiceClient - this forces fallback to legacy mode
+        }
+        else
+        {
+            // No SAS token present
+            // use DefaultAzureCredential for authentication
+            CreateBlobServiceClientWithDefaultAzureCredentials(containerUri);
+        }
+    }
+
+    private void CreateBlobServiceClientWithDefaultAzureCredentials(Uri containerUri)
+    {
+        // This requires one of the following to be configured in the environment:
+        // - Managed Identity (recommended for Azure-hosted applications)
+        // - Azure CLI authentication (for local development)
+        // - Environment variables (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID)
+        // - Visual Studio or VS Code authentication
+        var serviceUri = new Uri($"{containerUri.Scheme}://{containerUri.Host}");
+        var credential = new DefaultAzureCredential();
+                    
+        _blobServiceClient = new BlobServiceClient(serviceUri, credential);
+        _logger.LogInformation(
+            "BlobServiceClient created using DefaultAzureCredential. " +
+            "Ensure Azure credentials are configured " +
+            "(Managed Identity, Azure CLI, environment variables, or IDE authentication).");
+    }
+
     private static void ValidateConfiguration(BlobConfigurationOptions config)
     {
         // Use DataAnnotations validation to enforce Range attributes automatically
         var validationContext = new ValidationContext(config);
         var validationResults = new List<ValidationResult>();
         
-        bool isValid = Validator.TryValidateObject(config, validationContext, validationResults, validateAllProperties: true);
+        var isValid = Validator.TryValidateObject(config, validationContext, validationResults, validateAllProperties: true);
 
         // Additional explicit validation for TimeSpan properties to ensure Range validation works correctly
         if (config.DebounceDelay < TimeSpan.Zero || config.DebounceDelay > TimeSpan.FromHours(1))

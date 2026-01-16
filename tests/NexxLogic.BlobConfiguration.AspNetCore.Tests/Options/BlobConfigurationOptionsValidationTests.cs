@@ -9,7 +9,7 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.Options;
 public class BlobConfigurationOptionsValidationTests
 {
     [Theory]
-    [InlineData(1, 0, 1, 1, 1)] // Minimum backward-compatible values
+    [InlineData(1000, 0, 1, 1, 1)] // Minimum backward-compatible values
     [InlineData(30000, 30, 60, 120, 5)] // Typical production values
     [InlineData(86400000, 3600, 86400, 7200, 1024)] // Maximum values
     [InlineData(1000, 0, 5, 5, 1)] // Zero debounce (disabled)

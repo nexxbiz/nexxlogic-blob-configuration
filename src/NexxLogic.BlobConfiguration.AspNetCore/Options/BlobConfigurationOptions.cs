@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using Azure.Storage.Blobs;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Options;
 
@@ -34,7 +35,7 @@ public class BlobConfigurationOptions
     /// <summary>
     /// Reload interval in milliseconds
     /// </summary>
-    [Range(1, 86400000, ErrorMessage = "ReloadInterval must be between 1 millisecond and 86400000 milliseconds (24 hours).")]
+    [Range(1000, 86400000, ErrorMessage = "ReloadInterval must be between 1000 millisecond (1 second) and 86400000 milliseconds (24 hours).")]
     public int ReloadInterval { get; set; } = 30_000;
     
     /// <summary>
