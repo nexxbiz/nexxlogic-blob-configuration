@@ -2,15 +2,8 @@
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Factories;
 
-public sealed class BlobClientFactory : IBlobClientFactory
+public sealed class BlobClientFactory(IBlobContainerClientFactory blobContainerClientFactory) : IBlobClientFactory
 {
-    private readonly IBlobContainerClientFactory blobContainerClientFactory;
-
-    public BlobClientFactory(IBlobContainerClientFactory blobContainerClientFactory)
-    {
-        this.blobContainerClientFactory = blobContainerClientFactory;
-    }
-
     public BlobClient GetBlobClient(string path)
     {
         return blobContainerClientFactory

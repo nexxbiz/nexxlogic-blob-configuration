@@ -1,49 +1,76 @@
-﻿using FluentValidation;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Options;
 
-internal class BlobConfigurationOptionsValidator : AbstractValidator<BlobConfigurationOptions>
+internal static class BlobConfigurationOptionsValidator
 {
-    public BlobConfigurationOptionsValidator()
+    public static ValidationResult? ValidateOptions(BlobConfigurationOptions options, ValidationContext validationContext)
     {
-        RuleFor(options => options.ReloadInterval)
-            .GreaterThanOrEqualTo(5000)
-            .When(options => options.ReloadOnChange);
+        var validationResults = new List<ValidationResult>();
+        
+        // Validate using DataAnnotations first
+        if (!Validator.TryValidateObject(options, validationContext, validationResults, validateAllProperties: true))
+        {
+            var errorMessages = validationResults
+                .Where(r => !string.IsNullOrWhiteSpace(r.ErrorMessage))
+                .Select(r => r.ErrorMessage!);
 
-        RuleFor(options => options)
-           .Must((options, _, context) =>
-           {
-               if (!string.IsNullOrWhiteSpace(options.BlobContainerUrl) &&
-                   (!string.IsNullOrWhiteSpace(options.ConnectionString) || options.BlobServiceClientFactory != null))
-               {
-                   context.AddFailure(
-                       "ConnectionString_BlobContainerUrl",
-                       "Cannot specify container url together with connection string or BlobServiceClientFactory. Please choose one.");
-                   return false;
-               }
-               return true;
-           });
+            var combinedMessage = string.Join(" ", errorMessages);
 
-        RuleFor(options => options)
-           .Must((options, _, context) =>
-           {
-               if (string.IsNullOrWhiteSpace(options.ConnectionString) &&
-                   string.IsNullOrWhiteSpace(options.BlobContainerUrl) &&
-                   options.BlobServiceClientFactory == null)
-               {
-                   context.AddFailure(
-                       "ConnectionString_BlobContainerUrl",
-                       "Neither connection string, container url, nor BlobServiceClientFactory is specified. Please configure one.");
-                   return false;
-               }
-               return true;
-           });
+            if (string.IsNullOrWhiteSpace(combinedMessage))
+            {
+                combinedMessage = "One or more validation errors occurred.";
+            }
 
+            return new ValidationResult(combinedMessage);
+        }
 
-        RuleFor(options => options.ContainerName)
-           .NotEmpty()
-           .When(options =>
-               string.IsNullOrWhiteSpace(options.BlobContainerUrl) &&
-               (!string.IsNullOrWhiteSpace(options.ConnectionString) || options.BlobServiceClientFactory != null));
+        // Custom validation rules
+        var customValidationErrors = new List<string>();
+
+        // ReloadInterval validation when ReloadOnChange is enabled
+        if (options is { ReloadOnChange: true, ReloadInterval: < 5000 })
+        {
+            customValidationErrors.Add("ReloadInterval must be at least 5000 milliseconds when ReloadOnChange is enabled.");
+        }
+
+        // Connection string and blob container URL mutual exclusion
+        var hasConnectionString = !string.IsNullOrWhiteSpace(options.ConnectionString);
+        var hasBlobContainerUrl = !string.IsNullOrWhiteSpace(options.BlobContainerUrl);
+
+        switch (hasConnectionString)
+        {
+            case true when hasBlobContainerUrl:
+                customValidationErrors.Add("Cannot specify both ConnectionString and BlobContainerUrl. Please choose one.");
+                break;
+            case false when !hasBlobContainerUrl:
+                customValidationErrors.Add("Either ConnectionString or BlobContainerUrl must be specified.");
+                break;
+        }
+
+        // Container name validation
+        if (string.IsNullOrWhiteSpace(options.ContainerName))
+        {
+            customValidationErrors.Add("ContainerName is required.");
+        }
+
+        if (customValidationErrors.Count > 0)
+        {
+            var errorMessage = string.Join(" ", customValidationErrors);
+            return new ValidationResult(errorMessage);
+        }
+
+        return ValidationResult.Success;
+    }
+
+    public static void ValidateAndThrow(BlobConfigurationOptions options)
+    {
+        var validationContext = new ValidationContext(options);
+        var validationResult = ValidateOptions(options, validationContext);
+        
+        if (validationResult != ValidationResult.Success)
+        {
+            throw new ArgumentException($"Invalid BlobConfiguration values: {validationResult?.ErrorMessage}", nameof(options));
+        }
     }
 }

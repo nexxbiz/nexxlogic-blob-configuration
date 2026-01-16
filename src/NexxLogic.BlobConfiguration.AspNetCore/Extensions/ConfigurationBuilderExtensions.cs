@@ -1,5 +1,4 @@
-﻿using FluentValidation;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
@@ -14,8 +13,8 @@ public static class ConfigurationBuilderExtensions
         ILogger<BlobFileProvider> logger)
     {
         var options = new BlobConfigurationOptions();
-        configure.Invoke(options);
-        new RequiredBlobNameBlobConfigurationOptionsValidator().ValidateAndThrow(options);
+        configure(options);
+        RequiredBlobNameBlobConfigurationOptionsValidator.ValidateAndThrow(options);
         var blobContainerClientFactory = new BlobContainerClientFactory(options);
         var blobClientFactory = new BlobClientFactory(blobContainerClientFactory);
 
@@ -38,11 +37,12 @@ public static class ConfigurationBuilderExtensions
         ILogger<BlobFileProvider> logger)
     {
         var options = new BlobConfigurationOptions();
-        configure.Invoke(options);
-        new BlobConfigurationOptionsValidator().ValidateAndThrow(options);
+        configure(options);
+        BlobConfigurationOptionsValidator.ValidateAndThrow(options);
 
         var blobContainerClientFactory = new BlobContainerClientFactory(options);
         var blobClientFactory = new BlobClientFactory(blobContainerClientFactory);
+
         var provider = new BlobFileProvider(blobClientFactory, blobContainerClientFactory, options, logger);
 
         foreach (var blobInfo in provider.GetDirectoryContents(""))
@@ -53,10 +53,16 @@ public static class ConfigurationBuilderExtensions
                 {
                     BlobName = blobInfo.Name,
                     ConnectionString = options.ConnectionString,
+                    BlobContainerUrl = options.BlobContainerUrl,
                     ContainerName = options.ContainerName,
                     Optional = options.Optional,
                     ReloadInterval = options.ReloadInterval,
                     ReloadOnChange = options.ReloadOnChange,
+                    // Enhanced properties
+                    DebounceDelay = options.DebounceDelay,
+                    MaxFileContentHashSizeMb = options.MaxFileContentHashSizeMb,
+                    WatchingInterval = options.WatchingInterval,
+                    ErrorRetryDelay = options.ErrorRetryDelay
                 };
 
                 source.FileProvider = new BlobFileProvider(

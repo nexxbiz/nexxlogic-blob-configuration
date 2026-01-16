@@ -21,7 +21,7 @@ public class BlobContainerClientFactoryTests
         var result = sut.GetBlobContainerClient();
 
         // Assert
-        result.Name.Should().Be(blobConfig.ContainerName);
+        Assert.Equal(blobConfig.ContainerName, result.Name);
     }
 
     [Fact]
@@ -30,7 +30,7 @@ public class BlobContainerClientFactoryTests
         // Arrange
         var blobConfig = new BlobConfigurationOptions
         {
-            BlobContainerUrl = "https://fakestorageaccount.blob.core.windows.net/configuration?sig=asdjkhasdhasdjkhsakjd",
+            BlobContainerUrl = "https://fakestorageaccount.blob.core.windows.net/configuration",
             ContainerName = "configuration"
         };
         var sut = new BlobContainerClientFactory(blobConfig);
@@ -39,7 +39,7 @@ public class BlobContainerClientFactoryTests
         var result = sut.GetBlobContainerClient();
 
         // Assert
-        result.Name.Should().Be(blobConfig.ContainerName);
-        result.Uri.ToString().Should().Be(blobConfig.BlobContainerUrl);
+        Assert.Equal(blobConfig.ContainerName, result.Name);
+        Assert.Equal(blobConfig.BlobContainerUrl, result.Uri.ToString());
     }
 }

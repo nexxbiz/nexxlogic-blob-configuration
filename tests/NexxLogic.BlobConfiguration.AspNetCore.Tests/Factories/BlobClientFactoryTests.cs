@@ -1,6 +1,5 @@
 ﻿using Azure.Storage.Blobs;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
-using NexxLogic.BlobConfiguration.AspNetCore.Options;
 using NSubstitute;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.Factories;
@@ -11,8 +10,8 @@ public class BlobClientFactoryTests
     public void GetBlobClient()
     {
         // Arrange
-        var blobName = "settings.json";
-        var blobContainerName = "config";
+        const string blobName = "settings.json";
+        const string blobContainerName = "config";
         var blobContainerFactory = Substitute.For<IBlobContainerClientFactory>();
 
         var blobClient = Substitute.For<BlobClient>();
@@ -40,7 +39,7 @@ public class BlobClientFactoryTests
         var result = sut.GetBlobClient(blobName);
 
         // Assert
-        result.BlobContainerName.Should().Be(blobContainerName);
-        result.Name.Should().Be(blobName);
+        Assert.Equal(blobContainerName, result.BlobContainerName);
+        Assert.Equal(blobName, result.Name);
     }
 }
