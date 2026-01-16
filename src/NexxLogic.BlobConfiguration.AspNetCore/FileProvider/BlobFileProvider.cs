@@ -446,8 +446,10 @@ public class BlobFileProvider : IFileProvider, IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        if (Interlocked.Exchange(ref _disposed, true))
+        {
+            return;
+        }
 
         // Cancel and dispose legacy change token to stop WatchBlobUpdate tasks
         try
