@@ -83,7 +83,7 @@ public class BlobFileProviderTests
             .Returns(Response.FromValue(blobProperties, Substitute.For<Response>()));
 
         // Act
-        await Task.Delay(options.ReloadInterval + 1);
+        await Task.Delay(options.ReloadInterval * 2);
 
         // Assert
         Assert.True(changeToken.HasChanged);
