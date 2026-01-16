@@ -41,6 +41,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
     private readonly BlobConfigurationOptions _blobConfig;
     private readonly ILogger<BlobFileProvider> _logger;
     private BlobServiceClient? _blobServiceClient;
+    
     // Enhanced blob watching configuration - using TimeSpan for better expressiveness
     private readonly TimeSpan _debounceDelay;
     private readonly TimeSpan _watchingInterval;
@@ -60,12 +61,12 @@ public class BlobFileProvider : IFileProvider, IDisposable
     /// <summary>
     /// True on initial load and when a change has been raised but not retrieved.
     /// </summary>
-    private bool _loadPending = true;
+    private volatile bool _loadPending = true;
 
     /// <summary>
     /// Whether the blob exists. The watch should stop when it does not exist.
     /// </summary>
-    private bool _exists;
+    private volatile bool _exists;
 
     public BlobFileProvider(IBlobClientFactory blobClientFactory,
         IBlobContainerClientFactory blobContainerClientFactory,
@@ -197,7 +198,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
         var blobClient = _blobClientFactory.GetBlobClient(subpath);
         var result = new BlobFileInfo(blobClient);
 
-        _lastModified = result.LastModified.Ticks;
+        Interlocked.Exchange(ref _lastModified, result.LastModified.Ticks);
         _loadPending = false;
         _exists = result.Exists;
 
@@ -215,8 +216,17 @@ public class BlobFileProvider : IFileProvider, IDisposable
             {
                 var blobClient = containerClient.GetBlobClient(blobInfo.Name);
                 var blob = new BlobFileInfo(blobClient);
-                _lastModified = Math.Max(blob.LastModified.Ticks, _lastModified);
-                fileInfos.Add(blob);
+                // Thread-safe update of _lastModified to maximum value
+                {
+                    var blobTicks = blob.LastModified.Ticks;
+                    long currentMax;
+                    do
+                    {
+                        currentMax = Interlocked.Read(ref _lastModified);
+                        if (blobTicks <= currentMax) break;
+                    } while (Interlocked.CompareExchange(ref _lastModified, blobTicks, currentMax) != currentMax);
+                    fileInfos.Add(blob);
+                }
             }
         }
         _loadPending = false;

@@ -11,7 +11,7 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.FileProvider;
 
 public class ChangeDetectionStrategyTests
 {
-    private const string BlobPath = "test/settings.json";
+    private const string DefaultBlobPath = "test/settings.json";
     private readonly ILogger<ETagChangeDetectionStrategy> _etagLogger = new NullLogger<ETagChangeDetectionStrategy>();
     private readonly ILogger<ContentBasedChangeDetectionStrategy> _contentLogger = new NullLogger<ContentBasedChangeDetectionStrategy>();
 
@@ -22,41 +22,14 @@ public class ChangeDetectionStrategyTests
     {
         // Arrange
         var strategy = new ETagChangeDetectionStrategy(_etagLogger);
-        var blobFingerprints = new ConcurrentDictionary<string, string>();
-        var blobClient = CreateMockBlobClient();
-        var cancellationToken = CancellationToken.None;
-
-        // Setup first call
-        var firstProperties = BlobsModelFactory.BlobProperties(eTag: new ETag($"\"{firstETag}\""), lastModified: DateTime.UtcNow, contentLength: 1024);
-        var firstContext = new ChangeDetectionContext
-        {
-            BlobClient = blobClient,
-            BlobPath = BlobPath,
-            Properties = firstProperties,
-            BlobFingerprints = blobFingerprints,
-            CancellationToken = cancellationToken
-        };
+        var (firstContext, secondContext) = CreateETagTestContexts(firstETag, secondETag);
         
-        // Act - First call (should store initial ETag)
+        // Act
         var firstResult = await strategy.HasChangedAsync(firstContext);
-
-        // Setup second call
-        var secondProperties = BlobsModelFactory.BlobProperties(eTag: new ETag($"\"{secondETag}\""), lastModified: DateTime.UtcNow, contentLength: 1024);
-        var secondContext = new ChangeDetectionContext
-        {
-            BlobClient = blobClient,
-            BlobPath = BlobPath,
-            Properties = secondProperties,
-            BlobFingerprints = blobFingerprints,
-            CancellationToken = cancellationToken
-        };
-        
-        // Act - Second call
         var secondResult = await strategy.HasChangedAsync(secondContext);
 
         // Assert
-        Assert.True(firstResult); // First call always returns true (initial state)
-        Assert.Equal(shouldDetectChange, secondResult);
+        AssertChangeDetectionResults(firstResult, secondResult, shouldDetectChange);
     }
 
     [Theory]
@@ -66,91 +39,28 @@ public class ChangeDetectionStrategyTests
     {
         // Arrange
         var strategy = new ContentBasedChangeDetectionStrategy(_contentLogger);
-        var blobFingerprints = new ConcurrentDictionary<string, string>();
-        var blobClient = CreateMockBlobClient();
-        var cancellationToken = CancellationToken.None;
+        var (firstContext, secondContext) = CreateContentTestContexts(firstContent, secondContent);
 
-        // Setup first content
-        var content1 = System.Text.Encoding.UTF8.GetBytes(firstContent);
-        var firstProperties = BlobsModelFactory.BlobProperties(eTag: new ETag("\"etag1\""), lastModified: DateTime.UtcNow, contentLength: content1.Length);
-        SetupBlobContentStream(blobClient, content1);
-
-        var firstContext = new ChangeDetectionContext
-        {
-            BlobClient = blobClient,
-            BlobPath = BlobPath,
-            Properties = firstProperties,
-            BlobFingerprints = blobFingerprints,
-            CancellationToken = cancellationToken
-        };
-
-        // Act - First call
+        // Act
         var firstResult = await strategy.HasChangedAsync(firstContext);
-
-        // Setup second content (same or different based on test case)
-        var content2 = System.Text.Encoding.UTF8.GetBytes(secondContent);
-        var secondProperties = BlobsModelFactory.BlobProperties(eTag: new ETag("\"etag2\""), lastModified: DateTime.UtcNow, contentLength: content2.Length);
-        SetupBlobContentStream(blobClient, content2);
-
-        var secondContext = new ChangeDetectionContext
-        {
-            BlobClient = blobClient,
-            BlobPath = BlobPath,
-            Properties = secondProperties,
-            BlobFingerprints = blobFingerprints,
-            CancellationToken = cancellationToken
-        };
-
-        // Act - Second call
         var secondResult = await strategy.HasChangedAsync(secondContext);
 
         // Assert
-        Assert.True(firstResult); // First call always returns true (initial state)
-        Assert.Equal(shouldDetectChange, secondResult);
+        AssertChangeDetectionResults(firstResult, secondResult, shouldDetectChange);
     }
 
     [Fact]
     public async Task SizeLimitedChangeDetectionDecorator_ShouldFallbackToETag_WhenFileIsTooLarge()
     {
         // Arrange
-        var maxFileSizeMb = 1; // 1 MB limit
-        var contentStrategy = new ContentBasedChangeDetectionStrategy(_contentLogger);
-        var etagStrategy = new ETagChangeDetectionStrategy(_etagLogger);
-        var decorator = new SizeLimitedChangeDetectionDecorator(
-            contentStrategy, etagStrategy, maxFileSizeMb, _etagLogger);
+        const int maxFileSizeMb = 1; // 1 MB limit
+        const int largeSizeBytes = 2 * 1024 * 1024; // 2 MB, exceeds limit
         
-        var blobFingerprints = new ConcurrentDictionary<string, string>();
-        var blobClient = CreateMockBlobClient();
-        var cancellationToken = CancellationToken.None;
+        var decorator = CreateSizeLimitedDecorator(maxFileSizeMb);
+        var (firstContext, secondContext) = CreateLargeFileTestContexts(largeSizeBytes, "etag1", "etag2");
 
-        // Setup large file (2 MB, exceeds 1 MB limit)
-        const int largeSizeBytes = 2 * 1024 * 1024;
-        var firstProperties = BlobsModelFactory.BlobProperties(eTag: new ETag("\"etag1\""), lastModified: DateTime.UtcNow, contentLength: largeSizeBytes);
-
-        var firstContext = new ChangeDetectionContext
-        {
-            BlobClient = blobClient,
-            BlobPath = BlobPath,
-            Properties = firstProperties,
-            BlobFingerprints = blobFingerprints,
-            CancellationToken = cancellationToken
-        };
-
-        // Act - First call (should use ETag fallback due to large size)
+        // Act
         var firstResult = await decorator.HasChangedAsync(firstContext);
-
-        // Setup different ETag for large file
-        var secondProperties = BlobsModelFactory.BlobProperties(eTag: new ETag("\"etag2\""), lastModified: DateTime.UtcNow, contentLength: largeSizeBytes);
-        var secondContext = new ChangeDetectionContext
-        {
-            BlobClient = blobClient,
-            BlobPath = BlobPath,
-            Properties = secondProperties,
-            BlobFingerprints = blobFingerprints,
-            CancellationToken = cancellationToken
-        };
-
-        // Act - Second call (should use ETag fallback and detect change)
         var secondResult = await decorator.HasChangedAsync(secondContext);
 
         // Assert
@@ -167,23 +77,7 @@ public class ChangeDetectionStrategyTests
         // Arrange
         var etagStrategy = new ETagChangeDetectionStrategy(_etagLogger);
         var contentStrategy = new ContentBasedChangeDetectionStrategy(_contentLogger);
-        var blobFingerprints = new ConcurrentDictionary<string, string>();
-        var blobClient = CreateMockBlobClient();
-        var cancellationToken = CancellationToken.None;
-
-        // Setup blob
-        var content = "{ \"test\": \"data\" }"u8.ToArray();
-        var properties = BlobsModelFactory.BlobProperties(eTag: new ETag("\"etag1\""), lastModified: DateTime.UtcNow, contentLength: content.Length);
-        SetupBlobContentStream(blobClient, content);
-
-        var context = new ChangeDetectionContext
-        {
-            BlobClient = blobClient,
-            BlobPath = blobPath,
-            Properties = properties,
-            BlobFingerprints = blobFingerprints,
-            CancellationToken = cancellationToken
-        };
+        var context = CreateTestContext(blobPath, "{ \"test\": \"data\" }", "etag1");
 
         // Act
         var etagResult = await etagStrategy.HasChangedAsync(context);
@@ -192,6 +86,108 @@ public class ChangeDetectionStrategyTests
         // Assert
         Assert.True(etagResult);
         Assert.True(contentResult);
+    }
+
+    // Helper methods to reduce repetition
+
+    private (ChangeDetectionContext first, ChangeDetectionContext second) CreateETagTestContexts(string firstETag, string secondETag)
+    {
+        var blobFingerprints = new ConcurrentDictionary<string, string>();
+        var blobClient = CreateMockBlobClient();
+
+        var firstProperties = CreateBlobProperties(firstETag, 1024);
+        var secondProperties = CreateBlobProperties(secondETag, 1024);
+
+        return (
+            CreateChangeDetectionContext(blobClient, DefaultBlobPath, firstProperties, blobFingerprints),
+            CreateChangeDetectionContext(blobClient, DefaultBlobPath, secondProperties, blobFingerprints)
+        );
+    }
+
+    private (ChangeDetectionContext first, ChangeDetectionContext second) CreateContentTestContexts(string firstContent, string secondContent)
+    {
+        var blobFingerprints = new ConcurrentDictionary<string, string>();
+        
+        // Use separate blob clients to avoid stream setup conflicts
+        var blobClient1 = CreateMockBlobClient();
+        var blobClient2 = CreateMockBlobClient();
+
+        var content1 = System.Text.Encoding.UTF8.GetBytes(firstContent);
+        var content2 = System.Text.Encoding.UTF8.GetBytes(secondContent);
+
+        SetupBlobContentStream(blobClient1, content1);
+        var firstProperties = CreateBlobProperties("etag1", content1.Length);
+        var firstContext = CreateChangeDetectionContext(blobClient1, DefaultBlobPath, firstProperties, blobFingerprints);
+
+        SetupBlobContentStream(blobClient2, content2);
+        var secondProperties = CreateBlobProperties("etag2", content2.Length);
+        var secondContext = CreateChangeDetectionContext(blobClient2, DefaultBlobPath, secondProperties, blobFingerprints);
+
+        return (firstContext, secondContext);
+    }
+
+    private (ChangeDetectionContext first, ChangeDetectionContext second) CreateLargeFileTestContexts(long fileSize, string firstETag, string secondETag)
+    {
+        var blobFingerprints = new ConcurrentDictionary<string, string>();
+        var blobClient = CreateMockBlobClient();
+
+        var firstProperties = CreateBlobProperties(firstETag, fileSize);
+        var secondProperties = CreateBlobProperties(secondETag, fileSize);
+
+        return (
+            CreateChangeDetectionContext(blobClient, DefaultBlobPath, firstProperties, blobFingerprints),
+            CreateChangeDetectionContext(blobClient, DefaultBlobPath, secondProperties, blobFingerprints)
+        );
+    }
+
+    private ChangeDetectionContext CreateTestContext(string blobPath, string content, string etag)
+    {
+        var blobFingerprints = new ConcurrentDictionary<string, string>();
+        var blobClient = CreateMockBlobClient();
+        var contentBytes = System.Text.Encoding.UTF8.GetBytes(content);
+        
+        SetupBlobContentStream(blobClient, contentBytes);
+        var properties = CreateBlobProperties(etag, contentBytes.Length);
+        
+        return CreateChangeDetectionContext(blobClient, blobPath, properties, blobFingerprints);
+    }
+
+    private static ChangeDetectionContext CreateChangeDetectionContext(
+        BlobClient blobClient, 
+        string blobPath, 
+        BlobProperties properties, 
+        ConcurrentDictionary<string, string> blobFingerprints)
+    {
+        return new ChangeDetectionContext
+        {
+            BlobClient = blobClient,
+            BlobPath = blobPath,
+            Properties = properties,
+            BlobFingerprints = blobFingerprints,
+            CancellationToken = CancellationToken.None
+        };
+    }
+
+    private static BlobProperties CreateBlobProperties(string etag, long contentLength)
+    {
+        return BlobsModelFactory.BlobProperties(
+            eTag: new ETag($"\"{etag}\""), 
+            lastModified: DateTime.UtcNow, 
+            contentLength: contentLength);
+    }
+
+    private SizeLimitedChangeDetectionDecorator CreateSizeLimitedDecorator(int maxFileSizeMb)
+    {
+        var contentStrategy = new ContentBasedChangeDetectionStrategy(_contentLogger);
+        var etagStrategy = new ETagChangeDetectionStrategy(_etagLogger);
+        return new SizeLimitedChangeDetectionDecorator(
+            contentStrategy, etagStrategy, maxFileSizeMb, _etagLogger);
+    }
+
+    private static void AssertChangeDetectionResults(bool firstResult, bool secondResult, bool shouldDetectChange)
+    {
+        Assert.True(firstResult); // First call always returns true (initial state)
+        Assert.Equal(shouldDetectChange, secondResult);
     }
 
     private static BlobClient CreateMockBlobClient()

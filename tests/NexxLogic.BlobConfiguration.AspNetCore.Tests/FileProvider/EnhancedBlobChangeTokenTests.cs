@@ -19,7 +19,7 @@ public class EnhancedBlobChangeTokenTests
     public void EnhancedBlobChangeToken_ShouldInitialize_WithCorrectInitialState()
     {
         // Arrange & Act
-        using var token = CreateToken();
+        using var token = CreateDefaultToken();
 
         // Assert
         Assert.NotNull(token);
@@ -33,40 +33,19 @@ public class EnhancedBlobChangeTokenTests
     public void EnhancedBlobChangeToken_ShouldRegisterCallbacks_Successfully(int callbackCount, bool shouldExecuteImmediately)
     {
         // Arrange
-        using var token = CreateToken();
-        var callbacksExecuted = new bool[callbackCount];
-        var registrations = new IDisposable[callbackCount];
-
-        // Act
-        for (var i = 0; i < callbackCount; i++)
-        {
-            var index = i; // Capture loop variable
-            registrations[i] = token.RegisterChangeCallback(_ => { callbacksExecuted[index] = true; }, null);
-        }
+        using var token = CreateDefaultToken();
+        var (callbacksExecuted, registrations) = RegisterMultipleCallbacks(token, callbackCount);
 
         // Assert
-        for (var i = 0; i < callbackCount; i++)
-        {
-            Assert.NotNull(registrations[i]);
-            Assert.IsType<IDisposable>(registrations[i], exactMatch: false);
-            Assert.Equal(shouldExecuteImmediately, callbacksExecuted[i]);
-        }
-
-        // Additional assertions for multiple registrations
-        if (callbackCount > 1)
-        {
-            for (var i = 0; i < callbackCount - 1; i++)
-            {
-                Assert.NotSame(registrations[i], registrations[i + 1]);
-            }
-        }
+        AssertCallbackRegistrations(registrations, callbacksExecuted, shouldExecuteImmediately);
+        CleanupRegistrations(registrations);
     }
 
     [Fact]
     public void EnhancedBlobChangeToken_ShouldUnregisterCallback_WhenRegistrationDisposed()
     {
         // Arrange
-        using var token = CreateToken();
+        using var token = CreateDefaultToken();
 
         // Act
         var registration = token.RegisterChangeCallback(_ => { }, null);
@@ -80,44 +59,48 @@ public class EnhancedBlobChangeTokenTests
     public void EnhancedBlobChangeToken_ShouldThrowObjectDisposedException_WhenRegisteringAfterDisposal()
     {
         // Arrange
-        var token = CreateToken();
+        var token = CreateDefaultToken();
         token.Dispose();
 
         // Act & Assert
         Assert.Throws<ObjectDisposedException>(() => token.RegisterChangeCallback(_ => { }, null));
     }
 
-    [Fact]
-    public void EnhancedBlobChangeToken_ShouldDisposeGracefully_WithoutExceptions()
+    [Theory]
+    [InlineData(true)] // With registrations
+    [InlineData(false)] // Without registrations
+    public void EnhancedBlobChangeToken_ShouldDisposeGracefully_WithoutExceptions(bool withRegistrations)
     {
         // Arrange
-        var token = CreateToken();
-        var registration1 = token.RegisterChangeCallback(_ => { }, null);
-        var registration2 = token.RegisterChangeCallback(_ => { }, null);
+        var token = CreateDefaultToken();
+        var registrations = new List<IDisposable>();
+
+        if (withRegistrations)
+        {
+            registrations.Add(token.RegisterChangeCallback(_ => { }, null));
+            registrations.Add(token.RegisterChangeCallback(_ => { }, null));
+        }
 
         // Act & Assert
-        var exception = Record.Exception(() =>
+        AssertGracefulDisposal(() =>
         {
-            registration1.Dispose();
-            registration2.Dispose();
+            CleanupRegistrations(registrations);
             token.Dispose();
         });
-        Assert.Null(exception);
     }
 
     [Fact]
     public void EnhancedBlobChangeToken_ShouldHandleDoubleDisposal_Gracefully()
     {
         // Arrange
-        var token = CreateToken();
+        var token = CreateDefaultToken();
 
         // Act & Assert
-        var exception = Record.Exception(() =>
+        AssertGracefulDisposal(() =>
         {
             token.Dispose();
             token.Dispose(); // Second disposal should be safe
         });
-        Assert.Null(exception);
     }
 
     [Fact]
@@ -125,32 +108,15 @@ public class EnhancedBlobChangeTokenTests
     {
         // Arrange
         using var cts = new CancellationTokenSource();
-        var blobServiceClient = CreateMockBlobServiceClient();
-        var slowStrategy = CreateSlowStrategy();
-
-        await using var token = new EnhancedBlobChangeToken(
-            blobServiceClient,
-            ContainerName,
-            BlobPath,
-            TimeSpan.FromSeconds(1), // Short debounce for test
-            TimeSpan.FromMilliseconds(100), // Fast watching interval
-            TimeSpan.FromMilliseconds(50), // Fast error retry
-            slowStrategy,
-            new ConcurrentDictionary<string, string>(),
-            _logger);
+        await using var token = CreateTokenWithStrategy(CreateSlowStrategy(), fastTiming: true);
 
         // Act - Let the token start its background operation, then cancel
-        await Task.Delay(50); // Let it start without using the cancellation token
-        cts.Cancel(); // Cancel the operation
-
-        // Wait a bit more to let cancellation propagate (without using the canceled token)
+        await Task.Delay(50);
+        cts.Cancel();
         await Task.Delay(100);
 
         // Assert - Token should handle cancellation gracefully
-        Assert.False(token.HasChanged); // Should not have changed due to cancellation
-        
-        // Verify that the token can still be disposed without issues
-        // The token will be disposed by the using statement - no exception should occur
+        Assert.False(token.HasChanged);
     }
 
     [Theory]
@@ -160,107 +126,247 @@ public class EnhancedBlobChangeTokenTests
     public void EnhancedBlobChangeToken_ShouldAcceptTimingConfigurations_Successfully(
         int debounceSeconds, int watchingSeconds, int errorRetrySeconds)
     {
-        // Arrange
-        var blobServiceClient = CreateMockBlobServiceClient();
-        var strategy = CreateMockStrategy();
-
-        // Act & Assert
-        var exception = Record.Exception(() =>
-        {
-            using var token = new EnhancedBlobChangeToken(
-                blobServiceClient,
-                ContainerName,
-                BlobPath,
-                TimeSpan.FromSeconds(debounceSeconds),
-                TimeSpan.FromSeconds(watchingSeconds),
-                TimeSpan.FromSeconds(errorRetrySeconds),
-                strategy,
-                new ConcurrentDictionary<string, string>(),
-                _logger);
-        });
-        Assert.Null(exception);
+        // Arrange & Act & Assert
+        AssertGracefulCreation(() => CreateTokenWithTiming(
+            TimeSpan.FromSeconds(debounceSeconds),
+            TimeSpan.FromSeconds(watchingSeconds),
+            TimeSpan.FromSeconds(errorRetrySeconds)));
     }
 
     [Fact]
     public async Task EnhancedBlobChangeToken_ShouldHandleStrategyExceptions_Gracefully()
     {
         // Arrange
-        var blobServiceClient = CreateMockBlobServiceClient();
-        var faultyStrategy = CreateFaultyStrategy();
-
-        await using var token = new EnhancedBlobChangeToken(
-            blobServiceClient,
-            ContainerName,
-            BlobPath,
-            TimeSpan.FromMilliseconds(10), // Very short debounce for test
-            TimeSpan.FromMilliseconds(50), // Fast watching interval
-            TimeSpan.FromMilliseconds(10), // Fast error retry
-            faultyStrategy,
-            new ConcurrentDictionary<string, string>(),
-            _logger);
+        await using var token = CreateTokenWithStrategy(CreateFaultyStrategy(), fastTiming: true);
 
         // Act - Let it run briefly to encounter strategy exceptions
         await Task.Delay(200);
 
         // Assert - Token should handle exceptions gracefully
-        Assert.False(token.HasChanged); // Should not change due to exceptions
+        Assert.False(token.HasChanged);
     }
 
     [Fact]
     public void EnhancedBlobChangeToken_ShouldShareBlobFingerprints_BetweenInstances()
     {
-        // This tests that blob fingerprints (hashes, ETags, etc.) are shared between tokens (for caching efficiency)
-        // while each token manages its own debounce timer independently
-        
         // Arrange
         var sharedBlobFingerprints = new ConcurrentDictionary<string, string>();
-        var blobServiceClient = CreateMockBlobServiceClient();
-        var strategy = CreateMockStrategy();
 
         // Act - Create two tokens sharing the same content hash dictionary
-        using var token1 = new EnhancedBlobChangeToken(
-            blobServiceClient,
-            ContainerName,
-            "file1.json",
-            TimeSpan.FromSeconds(1),
-            TimeSpan.FromSeconds(10),
-            TimeSpan.FromSeconds(5),
-            strategy,
-            sharedBlobFingerprints,
-            _logger);
-
-        using var token2 = new EnhancedBlobChangeToken(
-            blobServiceClient,
-            ContainerName,
-            "file2.json",
-            TimeSpan.FromSeconds(1),
-            TimeSpan.FromSeconds(10),
-            TimeSpan.FromSeconds(5),
-            strategy,
-            sharedBlobFingerprints,
-            _logger);
+        using var token1 = CreateTokenWithPath("file1.json", sharedBlobFingerprints);
+        using var token2 = CreateTokenWithPath("file2.json", sharedBlobFingerprints);
 
         // Assert - Both tokens should be created successfully and share content hashes
         Assert.NotNull(token1);
         Assert.NotNull(token2);
         Assert.NotSame(token1, token2);
-        
-        // The shared blob fingerprints dictionary enables efficient caching across tokens
-        // Each token manages its own debounce timer independently for better isolation
     }
 
-    private EnhancedBlobChangeToken CreateToken()
+    [Fact]
+    public async Task EnhancedBlobChangeToken_ShouldDisposeAsync_WithoutBlocking()
+    {
+        // Arrange
+        var token = CreateDefaultToken();
+        var registration = token.RegisterChangeCallback(_ => { }, null);
+        var startTime = DateTime.UtcNow;
+
+        // Act
+        await using (token)
+        {
+            Assert.True(token.ActiveChangeCallbacks);
+        }
+
+        var elapsedTime = DateTime.UtcNow - startTime;
+
+        // Assert
+        Assert.True(elapsedTime < TimeSpan.FromSeconds(1), 
+            $"Async disposal took {elapsedTime.TotalMilliseconds}ms, which suggests it may be blocking");
+        
+        registration.Dispose();
+    }
+
+    [Fact]
+    public void EnhancedBlobChangeToken_ShouldSupportBothSyncAndAsyncDisposal()
+    {
+        // Arrange
+        var token1 = CreateDefaultToken();
+        var token2 = CreateDefaultToken();
+
+        // Act & Assert - Both disposal patterns should work
+        AssertGracefulDisposal(() => token1.Dispose());
+        AssertGracefulDisposal(() => token2.DisposeAsync().GetAwaiter().GetResult());
+    }
+
+    [Theory]
+    [InlineData(true)] // Test callback that registers another callback
+    [InlineData(false)] // Test callback that unregisters itself
+    public void EnhancedBlobChangeToken_ShouldAvoidDeadlocks_WhenCallbacksModifyRegistrations(bool registerInCallback)
+    {
+        // Arrange
+        using var token = CreateDefaultToken();
+        var callbackExecuted = false;
+        var additionalRegistrations = new List<IDisposable>();
+
+        if (registerInCallback)
+        {
+            // Test registering callback within callback
+            var registration = token.RegisterChangeCallback(_ =>
+            {
+                callbackExecuted = true;
+                // Register another callback - should not deadlock
+#pragma warning disable IDE0067 // Captured variable is disposed in the outer scope - intentional for testing
+                var secondRegistration = token.RegisterChangeCallback(_ => { }, null);
+#pragma warning restore IDE0067
+                additionalRegistrations.Add(secondRegistration);
+            }, null);
+
+            // Simulate change notification
+            TriggerChangeNotification(token);
+
+            // Assert
+            Assert.True(callbackExecuted, "Callback should have executed without deadlock");
+            Assert.Single(additionalRegistrations);
+
+            // Cleanup
+            registration.Dispose();
+            CleanupRegistrations(additionalRegistrations);
+        }
+        else
+        {
+            // Test self-disposal within callback
+            IDisposable? registration = null;
+            registration = token.RegisterChangeCallback(_ =>
+            {
+                callbackExecuted = true;
+                // Self-dispose - should not deadlock
+#pragma warning disable IDE0067 // Captured variable is modified in the outer scope - intentional for testing
+                registration!.Dispose();
+#pragma warning restore IDE0067
+            }, null);
+
+            // Simulate change notification
+            TriggerChangeNotification(token);
+
+            // Assert
+            Assert.True(callbackExecuted, "Callback should have executed without deadlock");
+            // No cleanup needed as it self-disposed
+        }
+    }
+
+    // Helper methods to reduce repetition
+
+    private EnhancedBlobChangeToken CreateDefaultToken()
+    {
+        return CreateTokenWithStrategy(CreateMockStrategy(), fastTiming: false);
+    }
+
+    private EnhancedBlobChangeToken CreateTokenWithStrategy(IChangeDetectionStrategy strategy, bool fastTiming)
+    {
+        var timing = fastTiming 
+            ? (debounce: TimeSpan.FromMilliseconds(10), watching: TimeSpan.FromMilliseconds(50), errorRetry: TimeSpan.FromMilliseconds(10))
+            : (debounce: TimeSpan.FromSeconds(1), watching: TimeSpan.FromSeconds(30), errorRetry: TimeSpan.FromSeconds(60));
+
+        return CreateTokenWithTiming(timing.debounce, timing.watching, timing.errorRetry, strategy);
+    }
+
+    private EnhancedBlobChangeToken CreateTokenWithTiming(
+        TimeSpan debounce, 
+        TimeSpan watching, 
+        TimeSpan errorRetry,
+        IChangeDetectionStrategy? strategy = null)
     {
         return new EnhancedBlobChangeToken(
             CreateMockBlobServiceClient(),
             ContainerName,
             BlobPath,
-            TimeSpan.FromSeconds(1),
-            TimeSpan.FromSeconds(30),
-            TimeSpan.FromSeconds(60),
-            CreateMockStrategy(),
+            debounce,
+            watching,
+            errorRetry,
+            strategy ?? CreateMockStrategy(),
             new ConcurrentDictionary<string, string>(),
             _logger);
+    }
+
+    private EnhancedBlobChangeToken CreateTokenWithPath(string blobPath, ConcurrentDictionary<string, string> sharedBlobFingerprints)
+    {
+        return new EnhancedBlobChangeToken(
+            CreateMockBlobServiceClient(),
+            ContainerName,
+            blobPath,
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromSeconds(5),
+            CreateMockStrategy(),
+            sharedBlobFingerprints,
+            _logger);
+    }
+
+    private static (bool[] callbacksExecuted, IDisposable[] registrations) RegisterMultipleCallbacks(
+        EnhancedBlobChangeToken token, 
+        int callbackCount)
+    {
+        var callbacksExecuted = new bool[callbackCount];
+        var registrations = new IDisposable[callbackCount];
+
+        for (var i = 0; i < callbackCount; i++)
+        {
+            var index = i; // Capture loop variable
+            registrations[i] = token.RegisterChangeCallback(_ => { callbacksExecuted[index] = true; }, null);
+        }
+
+        return (callbacksExecuted, registrations);
+    }
+
+    private static void AssertCallbackRegistrations(
+        IDisposable[] registrations, 
+        bool[] callbacksExecuted, 
+        bool shouldExecuteImmediately)
+    {
+        for (var i = 0; i < registrations.Length; i++)
+        {
+            Assert.NotNull(registrations[i]);
+            Assert.IsType<IDisposable>(registrations[i], exactMatch: false);
+            Assert.Equal(shouldExecuteImmediately, callbacksExecuted[i]);
+        }
+
+        // Additional assertions for multiple registrations
+        if (registrations.Length > 1)
+        {
+            for (var i = 0; i < registrations.Length - 1; i++)
+            {
+                Assert.NotSame(registrations[i], registrations[i + 1]);
+            }
+        }
+    }
+
+    private static void CleanupRegistrations(IEnumerable<IDisposable?> registrations)
+    {
+        foreach (var registration in registrations)
+        {
+            registration?.Dispose();
+        }
+    }
+
+    private static void AssertGracefulDisposal(Action disposeAction)
+    {
+        var exception = Record.Exception(disposeAction);
+        Assert.Null(exception);
+    }
+
+    private static void AssertGracefulCreation(Func<IDisposable> createAction)
+    {
+        var exception = Record.Exception(() =>
+        {
+            using var disposable = createAction();
+        });
+        Assert.Null(exception);
+    }
+
+    private static void TriggerChangeNotification(EnhancedBlobChangeToken token)
+    {
+        var notifyMethod = typeof(EnhancedBlobChangeToken)
+            .GetMethod("NotifyCallbacks", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        notifyMethod?.Invoke(token, null);
     }
 
     private static BlobServiceClient CreateMockBlobServiceClient()
@@ -302,120 +408,5 @@ public class EnhancedBlobChangeTokenTests
         strategy.HasChangedAsync(Arg.Any<ChangeDetectionContext>())
             .ThrowsAsync(new InvalidOperationException("Simulated strategy failure"));
         return strategy;
-    }
-
-    [Fact]
-    public async Task EnhancedBlobChangeToken_ShouldDisposeAsync_WithoutBlocking()
-    {
-        // Arrange
-        var token = CreateToken();
-        var registration = token.RegisterChangeCallback(_ => { }, null);
-        var startTime = DateTime.UtcNow;
-
-        // Act
-        await using (token)
-        {
-            // Token should be alive here
-            Assert.True(token.ActiveChangeCallbacks);
-        }
-        // Token should be disposed here via async disposal
-
-        var endTime = DateTime.UtcNow;
-        var elapsedTime = endTime - startTime;
-
-        // Assert
-        // Disposal should complete quickly (much less than the 5-second timeout)
-        // This verifies we're not blocking on the background task completion
-        Assert.True(elapsedTime < TimeSpan.FromSeconds(1), 
-            $"Async disposal took {elapsedTime.TotalMilliseconds}ms, which suggests it may be blocking");
-        
-        // Cleanup
-        registration.Dispose();
-    }
-
-    [Fact]
-    public void EnhancedBlobChangeToken_ShouldSupportBothSyncAndAsyncDisposal()
-    {
-        // Arrange
-        var token1 = CreateToken();
-        var token2 = CreateToken();
-
-        // Act & Assert - Both disposal patterns should work
-        var syncException = Record.Exception(() => token1.Dispose());
-        Assert.Null(syncException);
-
-        var asyncException = Record.Exception(() => token2.DisposeAsync().GetAwaiter().GetResult());
-        Assert.Null(asyncException);
-    }
-
-    [Fact]
-    public void EnhancedBlobChangeToken_ShouldAvoidDeadlocks_WhenCallbacksRegisterUnregister()
-    {
-        // Arrange
-        using var token = CreateToken();
-        var callbackExecuted = false;
-        var registrations = new List<IDisposable>();
-
-        // Act - Register a callback that tries to register another callback
-        // This tests that callback execution doesn't deadlock with the internal lock
-        var firstRegistration = token.RegisterChangeCallback(_ =>
-        {
-            callbackExecuted = true;
-            
-            // This should not deadlock - callback execution should be outside the lock
-            var secondRegistration = token.RegisterChangeCallback(_ =>
-            {
-                // Empty callback for testing
-            }, null);
-            registrations.Add(secondRegistration);
-            
-        }, null);
-
-        // Simulate a change notification by manually triggering callbacks
-        // (In real usage this would happen through the background watcher)
-        var notifyMethod = typeof(EnhancedBlobChangeToken)
-            .GetMethod("NotifyCallbacks", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        notifyMethod?.Invoke(token, null);
-
-        // Assert
-        Assert.True(callbackExecuted, "First callback should have executed");
-        Assert.Single(registrations); // Should have one registration from the callback
-        
-        // The second callback won't be executed in this test since we only triggered one notification,
-        // but the important thing is that registration didn't deadlock
-        
-        // Cleanup
-        firstRegistration.Dispose();
-        foreach (var registration in registrations)
-        {
-            registration.Dispose();
-        }
-    }
-
-    [Fact]
-    public void EnhancedBlobChangeToken_ShouldAvoidDeadlocks_WhenCallbacksUnregister()
-    {
-        // Arrange
-        using var token = CreateToken();
-        var callbackExecuted = false;
-        IDisposable? registration = null;
-
-        // Act - Register a callback that tries to unregister itself
-        token.RegisterChangeCallback(_ =>
-        {
-            callbackExecuted = true;
-            
-            // This should not deadlock - callback execution should be outside the lock
-            registration?.Dispose();
-            
-        }, null);
-
-        // Simulate a change notification
-        var notifyMethod = typeof(EnhancedBlobChangeToken)
-            .GetMethod("NotifyCallbacks", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        notifyMethod?.Invoke(token, null);
-
-        // Assert
-        Assert.True(callbackExecuted, "Callback should have executed and self-unregistered without deadlock");
     }
 }
