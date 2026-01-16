@@ -452,6 +452,15 @@ public class BlobFileProvider : IFileProvider, IDisposable
         {
             return;
         }
+        
+        lock (this)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
+        }
 
         // Cancel and dispose legacy change token to stop WatchBlobUpdate tasks
         try
