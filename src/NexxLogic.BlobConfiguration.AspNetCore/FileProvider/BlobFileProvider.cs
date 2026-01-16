@@ -6,7 +6,6 @@ using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
 using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
-using System.Threading;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
 using Azure.Identity;
 
@@ -451,15 +450,6 @@ public class BlobFileProvider : IFileProvider, IDisposable
         if (Interlocked.CompareExchange(ref _disposed, 1, 0) == 1)
         {
             return;
-        }
-        
-        lock (this)
-        {
-            if (_disposed)
-            {
-                return;
-            }
-            _disposed = true;
         }
 
         // Cancel and dispose legacy change token to stop WatchBlobUpdate tasks
