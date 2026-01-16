@@ -6,7 +6,7 @@ A .NET Configuration Provider using JSON settings from an Azure Blob Storage wit
 All timing and size configuration values are validated using .NET DataAnnotations with descriptive error messages:
 
 ### Validation Ranges (Enforced via Range Attributes)
-- **ReloadInterval**: 1-86400000 ms (1ms to 24h) - allows legacy test values
+- **ReloadInterval**: 1000-86400000 ms (1s to 24h)
 - **DebounceDelay**: 0s-1h (TimeSpan) - 0 disables debouncing  
 - **WatchingInterval**: 1s-24h (TimeSpan) - allows fast polling
 - **ErrorRetryDelay**: 1s-2h (TimeSpan) - allows quick retries
@@ -45,7 +45,7 @@ builder.Configuration.AddJsonBlob(config =>
 // ✅ Test/development configuration
 builder.Configuration.AddJsonBlob(config => 
 {
-    config.ReloadInterval = 1;                              // Fast for tests
+    config.ReloadInterval = 1000;                           // Fast for tests (1 second)
     config.DebounceDelay = TimeSpan.Zero;                   // Disabled debouncing
     config.WatchingInterval = TimeSpan.FromSeconds(1);      // Fast polling
     config.ErrorRetryDelay = TimeSpan.FromSeconds(1);       // Quick retry
