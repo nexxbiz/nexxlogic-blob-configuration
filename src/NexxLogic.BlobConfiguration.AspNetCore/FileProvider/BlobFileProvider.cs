@@ -50,7 +50,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
     private readonly int _maxContentHashSizeMb;
     private readonly ConcurrentDictionary<string, string> _blobFingerprints;
     private readonly ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>> _tokenCache;
-    private volatile bool _disposed;
+    private int _disposed; // 0 = false, 1 = true (used with Interlocked for thread-safety)
 
     private BlobChangeToken _changeToken = new();
     /// <summary>
@@ -244,7 +244,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
 
     public IChangeToken Watch(string filter)
     {
-        if (_disposed)
+        if (_disposed == 1)
         {
             throw new ObjectDisposedException(nameof(BlobFileProvider));
         }
@@ -272,7 +272,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
                 (_, current) =>
                 {
                     // If the current weak reference still has a live target, keep using it.
-                    if (current.TryGetTarget(out _))
+                    if (current.TryGetTarget(out var token))
                     {
                         return current;
                     }
@@ -446,7 +446,10 @@ public class BlobFileProvider : IFileProvider, IDisposable
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, true))
+        // Use Interlocked.CompareExchange to atomically check and set disposal flag
+        // This prevents race conditions where multiple threads could both proceed with disposal
+        // Returns the original value - if it was already 1 (disposed), we return early
+        if (Interlocked.CompareExchange(ref _disposed, 1, 0) == 1)
         {
             return;
         }
