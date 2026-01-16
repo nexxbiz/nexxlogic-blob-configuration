@@ -41,7 +41,7 @@ public class BlobConfigurationOptions
     /// <summary>
     /// Debounce delay to prevent rapid consecutive reloads
     /// </summary>
-    [Range(typeof(TimeSpan), "00:00:00", "01:00:00", ErrorMessage = "DebounceDelay must be between 0 seconds and 1 hour. Use 0 to disable debouncing.")]
+    [Range(typeof(TimeSpan), "00:00:00", "01:00:00", ErrorMessage = "DebounceDelay must be between 0 seconds and 1 hour.")]
     public TimeSpan DebounceDelay { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
