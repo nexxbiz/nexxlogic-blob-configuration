@@ -2,6 +2,7 @@ using Azure.Storage.Blobs;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using System.Collections.Concurrent;
+using System.Threading;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
@@ -39,7 +40,7 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
     private readonly Task _watchingTask;
     private Timer? _debounceTimer;
     private volatile bool _hasChanged;
-    private int _disposed; // 0 = false, 1 = true - used with Interlocked for thread-safe disposal
+    private int _disposed; // 0 = false, 1 = true (used with Interlocked for thread-safety)
     private readonly object _lock = new object();
     private readonly Dictionary<Guid, (Action<object?> callback, object? state)> _callbacks = new();
 
@@ -292,8 +293,13 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
     /// <returns>A ValueTask representing the asynchronous disposal operation</returns>
     public async ValueTask DisposeAsync()
     {
-        // Atomically check and set disposed flag to prevent race conditions
-        if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0) return; 
+        // Use Interlocked.CompareExchange to atomically check and set disposal flag
+        // This prevents race conditions where multiple threads could both proceed with disposal
+        // Returns the original value - if it was already 1 (disposed), we return early
+        if (Interlocked.CompareExchange(ref _disposed, 1, 0) == 1)
+        {
+            return;
+        }
         
         try
         {
@@ -322,7 +328,8 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
             }
             
             // Properly await timer async disposal
-            // This ensures any pending timer callback completes
+            // The disposal flag was already set atomically at the beginning of this method,
+            // so any pending timer callbacks will see _disposed == 1 and exit early without executing
             var timerTask = _debounceTimer?.DisposeAsync() ?? ValueTask.CompletedTask;
             await timerTask;
             
@@ -346,8 +353,17 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
     /// </summary>
     public void Dispose()
     {
-        // Atomically check and set disposed flag to prevent race conditions
-        if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0) return;
+        // Synchronous disposal for IDisposable compatibility
+        // This should ideally not be used in high-throughput scenarios
+        // Prefer DisposeAsync() when possible
+        
+        // Use Interlocked.CompareExchange to atomically check and set disposal flag
+        // This prevents race conditions where multiple threads could both proceed with disposal
+        // Returns the original value - if it was already 1 (disposed), we return early
+        if (Interlocked.CompareExchange(ref _disposed, 1, 0) == 1)
+        {
+            return;
+        }
 
         try
         {

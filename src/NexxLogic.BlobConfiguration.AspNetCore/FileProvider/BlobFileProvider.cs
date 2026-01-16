@@ -6,6 +6,7 @@ using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
 using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
+using System.Threading;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
 using Azure.Identity;
 
@@ -50,7 +51,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
     private readonly int _maxContentHashSizeMb;
     private readonly ConcurrentDictionary<string, string> _blobFingerprints;
     private readonly ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>> _tokenCache;
-    private int _disposed; // 0 = false, 1 = true - used with Interlocked for thread-safe disposal
+    private int _disposed; // 0 = false, 1 = true (used with Interlocked for thread-safety)
 
     private BlobChangeToken _changeToken = new();
     /// <summary>
@@ -272,7 +273,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
                 (_, current) =>
                 {
                     // If the current weak reference still has a live target, keep using it.
-                    if (current.TryGetTarget(out var _))
+                    if (current.TryGetTarget(out EnhancedBlobChangeToken _))
                     {
                         return current;
                     }
@@ -446,9 +447,19 @@ public class BlobFileProvider : IFileProvider, IDisposable
 
     public void Dispose()
     {
-        if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0)
+        // Atomically check and set disposal flag to prevent concurrent disposal
+        if (Interlocked.CompareExchange(ref _disposed, 1, 0) == 1)
         {
             return;
+        }
+        
+        lock (this)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
         }
 
         // Cancel and dispose legacy change token to stop WatchBlobUpdate tasks
