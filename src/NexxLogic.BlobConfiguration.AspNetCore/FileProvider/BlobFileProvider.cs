@@ -447,9 +447,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
 
     public void Dispose()
     {
-        // Use Interlocked.CompareExchange to atomically check and set disposal flag
-        // This prevents race conditions where multiple threads could both proceed with disposal
-        // Returns the original value - if it was already 1 (disposed), we return early
+        // Atomically check and set disposal flag to prevent concurrent disposal
         if (Interlocked.CompareExchange(ref _disposed, 1, 0) == 1)
         {
             return;

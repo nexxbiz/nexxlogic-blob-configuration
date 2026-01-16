@@ -328,8 +328,8 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
             }
             
             // Properly await timer async disposal
-            // The disposal flag was already set atomically at method entry, so any pending
-            // timer callbacks will see _disposed == 1 and exit early without executing
+            // The disposal flag was already set atomically at the beginning of this method,
+            // so any pending timer callbacks will see _disposed == 1 and exit early without executing
             var timerTask = _debounceTimer?.DisposeAsync() ?? ValueTask.CompletedTask;
             await timerTask;
             
