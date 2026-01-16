@@ -272,7 +272,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
                 (_, current) =>
                 {
                     // If the current weak reference still has a live target, keep using it.
-                    if (current.TryGetTarget(out _))
+                    if (current.TryGetTarget(out var _))
                     {
                         return current;
                     }
@@ -446,9 +446,18 @@ public class BlobFileProvider : IFileProvider, IDisposable
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, true))
+        if (_disposed)
         {
             return;
+        }
+        
+        lock (this)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
         }
 
         // Cancel and dispose legacy change token to stop WatchBlobUpdate tasks
