@@ -40,8 +40,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
     private readonly IBlobContainerClientFactory _blobContainerClientFactory;
     private readonly BlobConfigurationOptions _blobConfig;
     private readonly ILogger<BlobFileProvider> _logger;
-    private BlobServiceClient? _blobServiceClient;
-    
+    private readonly BlobServiceClient? _blobServiceClient;
     // Enhanced blob watching configuration - using TimeSpan for better expressiveness
     private readonly TimeSpan _debounceDelay;
     private readonly TimeSpan _watchingInterval;
@@ -61,12 +60,12 @@ public class BlobFileProvider : IFileProvider, IDisposable
     /// <summary>
     /// True on initial load and when a change has been raised but not retrieved.
     /// </summary>
-    private volatile bool _loadPending = true;
+    private bool _loadPending = true;
 
     /// <summary>
     /// Whether the blob exists. The watch should stop when it does not exist.
     /// </summary>
-    private volatile bool _exists;
+    private bool _exists;
 
     public BlobFileProvider(IBlobClientFactory blobClientFactory,
         IBlobContainerClientFactory blobContainerClientFactory,
@@ -77,7 +76,8 @@ public class BlobFileProvider : IFileProvider, IDisposable
         _blobConfig = blobConfig;
         _blobContainerClientFactory = blobContainerClientFactory;
         _logger = logger;
-        
+
+        // Validate configuration values at runtime
         ValidateConfiguration(blobConfig);
 
         // Initialize enhanced options directly from TimeSpan properties
@@ -101,7 +101,31 @@ public class BlobFileProvider : IFileProvider, IDisposable
             {
                 var containerUri = new Uri(_blobConfig.BlobContainerUrl);
 
-                CreateBlobServiceClientBasedOnUri(containerUri);
+                // If a SAS token is present (query string), fallback to legacy mode
+                // Enhanced features require either ConnectionString or BlobContainerUrl without SAS + DefaultAzureCredential
+                if (!string.IsNullOrEmpty(containerUri.Query))
+                {
+                    _logger.LogInformation(
+                        "BlobContainerUrl contains a SAS token; skipping BlobServiceClient creation for enhanced features. " +
+                        "Falling back to legacy mode.");
+                    // Don't create _blobServiceClient - this forces fallback to legacy mode
+                }
+                else
+                {
+                    // No SAS token present - use DefaultAzureCredential for authentication
+                    // This requires one of the following to be configured in the environment:
+                    // - Managed Identity (recommended for Azure-hosted applications)
+                    // - Azure CLI authentication (for local development)
+                    // - Environment variables (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID)
+                    // - Visual Studio or VS Code authentication
+                    var serviceUri = new Uri($"{containerUri.Scheme}://{containerUri.Host}");
+                    var credential = new DefaultAzureCredential();
+                    
+                    _blobServiceClient = new BlobServiceClient(serviceUri, credential);
+                    _logger.LogInformation(
+                        "BlobServiceClient created using DefaultAzureCredential. Ensure Azure credentials are configured " +
+                        "(Managed Identity, Azure CLI, environment variables, or IDE authentication).");
+                }
             }
         }
         catch (Exception ex)
@@ -117,50 +141,13 @@ public class BlobFileProvider : IFileProvider, IDisposable
             _debounceDelay.TotalSeconds, _strategyFactory.GetType().Name);
     }
 
-    private void CreateBlobServiceClientBasedOnUri(Uri containerUri)
-    {
-        // If a SAS token is present (query string), fallback to legacy mode
-        // Enhanced features require either ConnectionString or BlobContainerUrl without SAS + DefaultAzureCredential
-        if (!string.IsNullOrEmpty(containerUri.Query))
-        {
-            _logger.LogInformation(
-                "BlobContainerUrl contains a SAS token; " +
-                "skipping BlobServiceClient creation for enhanced features. " +
-                "Falling back to legacy mode.");
-            // Don't create _blobServiceClient - this forces fallback to legacy mode
-        }
-        else
-        {
-            // No SAS token present
-            // use DefaultAzureCredential for authentication
-            CreateBlobServiceClientWithDefaultAzureCredentials(containerUri);
-        }
-    }
-
-    private void CreateBlobServiceClientWithDefaultAzureCredentials(Uri containerUri)
-    {
-        // This requires one of the following to be configured in the environment:
-        // - Managed Identity (recommended for Azure-hosted applications)
-        // - Azure CLI authentication (for local development)
-        // - Environment variables (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID)
-        // - Visual Studio or VS Code authentication
-        var serviceUri = new Uri($"{containerUri.Scheme}://{containerUri.Host}");
-        var credential = new DefaultAzureCredential();
-                    
-        _blobServiceClient = new BlobServiceClient(serviceUri, credential);
-        _logger.LogInformation(
-            "BlobServiceClient created using DefaultAzureCredential. " +
-            "Ensure Azure credentials are configured " +
-            "(Managed Identity, Azure CLI, environment variables, or IDE authentication).");
-    }
-
     private static void ValidateConfiguration(BlobConfigurationOptions config)
     {
         // Use DataAnnotations validation to enforce Range attributes automatically
         var validationContext = new ValidationContext(config);
         var validationResults = new List<ValidationResult>();
         
-        var isValid = Validator.TryValidateObject(config, validationContext, validationResults, validateAllProperties: true);
+        bool isValid = Validator.TryValidateObject(config, validationContext, validationResults, validateAllProperties: true);
 
         // Additional explicit validation for TimeSpan properties to ensure Range validation works correctly
         if (config.DebounceDelay < TimeSpan.Zero || config.DebounceDelay > TimeSpan.FromHours(1))
@@ -198,7 +185,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
         var blobClient = _blobClientFactory.GetBlobClient(subpath);
         var result = new BlobFileInfo(blobClient);
 
-        Interlocked.Exchange(ref _lastModified, result.LastModified.Ticks);
+        _lastModified = result.LastModified.Ticks;
         _loadPending = false;
         _exists = result.Exists;
 
@@ -216,17 +203,8 @@ public class BlobFileProvider : IFileProvider, IDisposable
             {
                 var blobClient = containerClient.GetBlobClient(blobInfo.Name);
                 var blob = new BlobFileInfo(blobClient);
-                // Thread-safe update of _lastModified to maximum value
-                {
-                    var blobTicks = blob.LastModified.Ticks;
-                    long currentMax;
-                    do
-                    {
-                        currentMax = Interlocked.Read(ref _lastModified);
-                        if (blobTicks <= currentMax) break;
-                    } while (Interlocked.CompareExchange(ref _lastModified, blobTicks, currentMax) != currentMax);
-                    fileInfos.Add(blob);
-                }
+                _lastModified = Math.Max(blob.LastModified.Ticks, _lastModified);
+                fileInfos.Add(blob);
             }
         }
         _loadPending = false;
@@ -272,7 +250,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
                 (_, current) =>
                 {
                     // If the current weak reference still has a live target, keep using it.
-                    if (current.TryGetTarget(out _))
+                    if (current.TryGetTarget(out var _))
                     {
                         return current;
                     }
@@ -386,7 +364,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
                 }
 
                 var properties = await blobClient.GetPropertiesAsync(cancellationToken: token);
-                if (properties.Value.LastModified.Ticks > Interlocked.Read(ref _lastModified))
+                if (properties.Value.LastModified.Ticks > _lastModified)
                 {
                     _logger.LogWarning("change raised");
                     RaiseChanged();
@@ -446,10 +424,8 @@ public class BlobFileProvider : IFileProvider, IDisposable
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, true))
-        {
-            return;
-        }
+        if (_disposed) return;
+        _disposed = true;
 
         // Cancel and dispose legacy change token to stop WatchBlobUpdate tasks
         try
@@ -474,9 +450,9 @@ public class BlobFileProvider : IFileProvider, IDisposable
     {
         // Collect all live tokens from the cache using explicit filtering
         var tokensToDispose = _tokenCache
-            .Select(kvp => kvp.Value.TryGetTarget(out var token) ? token : null)
-            .Where(token => token != null)
-            .Select(token => token!)
+            .Select(kvp => new { kvp.Key, Token = kvp.Value.TryGetTarget(out var token) ? token : null })
+            .Where(x => x.Token != null)
+            .Select(x => x.Token!)
             .ToList();
         
         // Clear the cache immediately to prevent new references
