@@ -185,13 +185,8 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
         {
             if (_disposed) return; // Double-check after acquiring lock
             
-            // Atomically replace and dispose old timer to prevent race condition
-            // where multiple timers could be created if TriggerDebouncedChange is called concurrently
-            var oldTimer = Interlocked.Exchange(ref _debounceTimer, null);
-            oldTimer?.Dispose();
-
-            // Create new debounce timer for this token
-            _debounceTimer = new Timer(_ =>
+            // Create new debounce timer first to avoid race condition window
+            var newTimer = new Timer(_ =>
             {
                 try
                 {
@@ -216,6 +211,11 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
                     }
                 }
             }, null, _debounceDelay, Timeout.InfiniteTimeSpan);
+            
+            // Atomically replace and dispose old timer after creating new one
+            var oldTimer = Interlocked.Exchange(ref _debounceTimer, newTimer);
+            oldTimer?.Dispose();
+            
             
             _logger.LogDebug("Change detected for blob {BlobPath}, starting {Delay}s debounce timer",
                 _blobPath, _debounceDelay.TotalSeconds);
