@@ -472,9 +472,9 @@ public class BlobFileProvider : IFileProvider, IDisposable
     {
         // Collect all live tokens from the cache using explicit filtering
         var tokensToDispose = _tokenCache
-            .Select(kvp => new { kvp.Key, Token = kvp.Value.TryGetTarget(out var token) ? token : null })
-            .Where(x => x.Token != null)
-            .Select(x => x.Token!)
+            .Select(kvp => kvp.Value.TryGetTarget(out var token) ? token : null)
+            .Where(token => token != null)
+            .Select(token => token!)
             .ToList();
         
         // Clear the cache immediately to prevent new references
