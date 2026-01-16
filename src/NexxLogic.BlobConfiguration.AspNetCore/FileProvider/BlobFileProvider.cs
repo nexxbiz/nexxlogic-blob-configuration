@@ -386,7 +386,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
                 }
 
                 var properties = await blobClient.GetPropertiesAsync(cancellationToken: token);
-                if (properties.Value.LastModified.Ticks > _lastModified)
+                if (properties.Value.LastModified.Ticks > Interlocked.Read(ref _lastModified))
                 {
                     _logger.LogWarning("change raised");
                     RaiseChanged();
