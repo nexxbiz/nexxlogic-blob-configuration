@@ -62,8 +62,11 @@ public class EnhancedBlobChangeDetectionTests
             Assert.IsType<BlobChangeToken>(changeToken); // Fallback to legacy mode
         }
         
+        // Register a callback to make ActiveChangeCallbacks meaningful
+        var registration = changeToken.RegisterChangeCallback(_ => { }, null);
         Assert.True(changeToken.ActiveChangeCallbacks);
         Assert.False(changeToken.HasChanged);
+        registration.Dispose();
     }
 
     [Fact]
@@ -263,8 +266,15 @@ public class EnhancedBlobChangeDetectionTests
         }
         
         // Both tokens should work independently regardless of mode
+        // Register callbacks to make ActiveChangeCallbacks meaningful
+        var registration1 = token1.RegisterChangeCallback(_ => { }, null);
+        var registration2 = token2.RegisterChangeCallback(_ => { }, null);
+        
         Assert.True(token1.ActiveChangeCallbacks);
         Assert.True(token2.ActiveChangeCallbacks);
+        
+        registration1.Dispose();
+        registration2.Dispose();
     }
 
     private static BlobConfigurationOptions CreateOptionsWithConnectionString()

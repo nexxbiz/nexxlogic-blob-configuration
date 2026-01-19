@@ -122,10 +122,18 @@ public class BlobFileProviderIntegrationTests
             Assert.Same(token1, token2); // Same path = same cached token
             Assert.NotSame(token1, token3); // Different path = different cached token
             
-            // All tokens should be functional
+            // All tokens should be functional - register callbacks first
+            var reg1 = token1.RegisterChangeCallback(_ => { }, null);
+            var reg2 = token2.RegisterChangeCallback(_ => { }, null);
+            var reg3 = token3.RegisterChangeCallback(_ => { }, null);
+            
             Assert.True(token1.ActiveChangeCallbacks);
             Assert.True(token2.ActiveChangeCallbacks);
             Assert.True(token3.ActiveChangeCallbacks);
+            
+            reg1.Dispose();
+            reg2.Dispose();
+            reg3.Dispose();
         }
         else
         {
@@ -195,7 +203,11 @@ public class BlobFileProviderIntegrationTests
 
         // Assert
         Assert.True(token is EnhancedBlobChangeToken || token is BlobChangeToken); // Enhanced or legacy mode
+        
+        // Register a callback to make ActiveChangeCallbacks meaningful
+        var registration = token.RegisterChangeCallback(_ => { }, null);
         Assert.True(token.ActiveChangeCallbacks);
+        registration.Dispose();
     }
 
     [Fact]
@@ -252,8 +264,12 @@ public class BlobFileProviderIntegrationTests
 
         // Assert
         Assert.True(token is EnhancedBlobChangeToken || token is BlobChangeToken); // Enhanced or legacy mode
+        
+        // Register a callback to make ActiveChangeCallbacks meaningful
+        var registration = token.RegisterChangeCallback(_ => { }, null);
         Assert.True(token.ActiveChangeCallbacks);
         Assert.False(token.HasChanged);
+        registration.Dispose();
     }
 
     [Fact]

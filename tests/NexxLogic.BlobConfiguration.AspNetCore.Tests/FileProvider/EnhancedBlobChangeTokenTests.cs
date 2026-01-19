@@ -16,7 +16,7 @@ public class EnhancedBlobChangeTokenTests
     private readonly ILogger _logger = new NullLogger<EnhancedBlobChangeTokenTests>();
 
     [Fact]
-    public void EnhancedBlobChangeToken_ShouldInitialize_WithCorrectInitialState()
+    public void EnhancedBlobChangeToken_ShouldBeValidAndNotChanged_Initially()
     {
         // Arrange & Act
         using var token = CreateDefaultToken();
@@ -24,7 +24,61 @@ public class EnhancedBlobChangeTokenTests
         // Assert
         Assert.NotNull(token);
         Assert.False(token.HasChanged);
+        Assert.False(token.ActiveChangeCallbacks); // Should be false until callbacks are registered
+    }
+
+    [Fact]
+    public void EnhancedBlobChangeToken_ShouldReturnCorrectActiveChangeCallbacks()
+    {
+        // Arrange
+        using var token = CreateDefaultToken();
+        
+        // Initially should be false (no callbacks registered)
+        Assert.False(token.ActiveChangeCallbacks);
+        
+        // Act - Register a callback
+        var registration1 = token.RegisterChangeCallback(_ => { }, null);
+        
+        // Assert - Should now be true
         Assert.True(token.ActiveChangeCallbacks);
+        
+        // Act - Register another callback
+        var registration2 = token.RegisterChangeCallback(_ => { }, null);
+        
+        // Assert - Should still be true (multiple callbacks)
+        Assert.True(token.ActiveChangeCallbacks);
+        
+        // Act - Unregister one callback
+        registration1.Dispose();
+        
+        // Assert - Should still be true (one callback remains)
+        Assert.True(token.ActiveChangeCallbacks);
+        
+        // Act - Unregister the last callback
+        registration2.Dispose();
+        
+        // Assert - Should be false again (no callbacks left)
+        Assert.False(token.ActiveChangeCallbacks);
+    }
+
+    [Fact]
+    public void EnhancedBlobChangeToken_ShouldReturnFalseActiveChangeCallbacks_WhenDisposed()
+    {
+        // Arrange
+        var token = CreateDefaultToken();
+        var registration = token.RegisterChangeCallback(_ => { }, null);
+        
+        // Verify it starts as true with registered callback
+        Assert.True(token.ActiveChangeCallbacks);
+        
+        // Act - Dispose the token
+        token.Dispose();
+        
+        // Assert - Should be false after disposal, even with registered callbacks
+        Assert.False(token.ActiveChangeCallbacks);
+        
+        // Cleanup
+        registration.Dispose();
     }
 
     [Theory]

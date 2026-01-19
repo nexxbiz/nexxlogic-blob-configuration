@@ -2,7 +2,6 @@ using Azure.Storage.Blobs;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using System.Collections.Concurrent;
-using System.Threading;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
@@ -45,7 +44,24 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
     private readonly Dictionary<Guid, (Action<object?> callback, object? state)> _callbacks = new();
 
     public bool HasChanged => _hasChanged;
-    public bool ActiveChangeCallbacks => Interlocked.CompareExchange(ref _disposed, 0, 0) == 0;
+    
+    /// <summary>
+    /// Gets a value indicating whether there are any active change callbacks registered.
+    /// Returns true if the token is not disposed AND has callbacks registered.
+    /// </summary>
+    public bool ActiveChangeCallbacks 
+    {
+        get
+        {
+            if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0)
+                return false;
+                
+            lock (_lock)
+            {
+                return _callbacks.Count > 0;
+            }
+        }
+    }
 
     public EnhancedBlobChangeToken(
         BlobServiceClient blobServiceClient,
