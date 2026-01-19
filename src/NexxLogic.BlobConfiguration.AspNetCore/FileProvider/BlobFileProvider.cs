@@ -7,7 +7,6 @@ using NexxLogic.BlobConfiguration.AspNetCore.Options;
 using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
-using Azure.Identity;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 
@@ -36,18 +35,18 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 /// </summary>
 public class BlobFileProvider : IFileProvider, IDisposable
 {
+    private const int MaxTokenCacheBeforeCleanup = 100;
     private readonly IBlobClientFactory _blobClientFactory;
     private readonly IBlobContainerClientFactory _blobContainerClientFactory;
     private readonly BlobConfigurationOptions _blobConfig;
     private readonly ILogger<BlobFileProvider> _logger;
-    private BlobServiceClient? _blobServiceClient;
+    private readonly BlobServiceClient? _blobServiceClient;
     
     // Enhanced blob watching configuration - using TimeSpan for better expressiveness
     private readonly TimeSpan _debounceDelay;
     private readonly TimeSpan _watchingInterval;
     private readonly TimeSpan _errorRetryDelay;
     private readonly IChangeDetectionStrategyFactory _strategyFactory;
-    private readonly int _maxContentHashSizeMb;
     private readonly ConcurrentDictionary<string, string> _blobFingerprints;
     private readonly ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>> _tokenCache;
     private int _disposed; // 0 = false, 1 = true (used with Interlocked for thread-safety)
@@ -70,6 +69,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
 
     public BlobFileProvider(IBlobClientFactory blobClientFactory,
         IBlobContainerClientFactory blobContainerClientFactory,
+        IBlobServiceClientFactory blobServiceClientFactory,
         BlobConfigurationOptions blobConfig,
         ILogger<BlobFileProvider> logger)
     {
@@ -85,23 +85,25 @@ public class BlobFileProvider : IFileProvider, IDisposable
         _watchingInterval = _blobConfig.WatchingInterval;
         _errorRetryDelay = _blobConfig.ErrorRetryDelay;
         _strategyFactory = new ChangeDetectionStrategyFactory(_blobConfig);
-        _maxContentHashSizeMb = _blobConfig.MaxFileContentHashSizeMb;
-        
+
         _blobFingerprints = new ConcurrentDictionary<string, string>();
         _tokenCache = new ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>>();
         
+        // Use the factory to create BlobServiceClient with exception handling
         try
         {
-            if (!string.IsNullOrEmpty(_blobConfig.ConnectionString))
+            // Check for SAS token before calling factory to maintain test compatibility
+            if (!string.IsNullOrEmpty(_blobConfig.BlobContainerUrl) && _blobConfig.BlobContainerUrl.Contains("?"))
             {
-                _blobServiceClient = new BlobServiceClient(_blobConfig.ConnectionString);
-                _logger.LogDebug("BlobServiceClient created using connection string");
+                _logger.LogInformation(
+                    "BlobContainerUrl contains a SAS token; " +
+                    "skipping BlobServiceClient creation for enhanced features. " +
+                    "Falling back to legacy mode.");
+                _blobServiceClient = null;
             }
-            else if (!string.IsNullOrEmpty(_blobConfig.BlobContainerUrl))
+            else
             {
-                var containerUri = new Uri(_blobConfig.BlobContainerUrl);
-
-                CreateBlobServiceClientBasedOnUri(containerUri);
+                _blobServiceClient = blobServiceClientFactory.CreateBlobServiceClient(_blobConfig);
             }
         }
         catch (Exception ex)
@@ -111,48 +113,13 @@ public class BlobFileProvider : IFileProvider, IDisposable
                 "If using BlobContainerUrl without SAS token, ensure Azure credentials are properly configured " +
                 "(Managed Identity, Azure CLI, environment variables, or IDE authentication). " +
                 "Falling back to legacy mode.");
+            _blobServiceClient = null;
         }
 
         _logger.LogDebug("BlobFileProvider initialized with debounce: {Debounce}s, strategy: {Strategy}",
             _debounceDelay.TotalSeconds, _strategyFactory.GetType().Name);
     }
 
-    private void CreateBlobServiceClientBasedOnUri(Uri containerUri)
-    {
-        // If a SAS token is present (query string), fallback to legacy mode
-        // Enhanced features require either ConnectionString or BlobContainerUrl without SAS + DefaultAzureCredential
-        if (!string.IsNullOrEmpty(containerUri.Query))
-        {
-            _logger.LogInformation(
-                "BlobContainerUrl contains a SAS token; " +
-                "skipping BlobServiceClient creation for enhanced features. " +
-                "Falling back to legacy mode.");
-            // Don't create _blobServiceClient - this forces fallback to legacy mode
-        }
-        else
-        {
-            // No SAS token present
-            // use DefaultAzureCredential for authentication
-            CreateBlobServiceClientWithDefaultAzureCredentials(containerUri);
-        }
-    }
-
-    private void CreateBlobServiceClientWithDefaultAzureCredentials(Uri containerUri)
-    {
-        // This requires one of the following to be configured in the environment:
-        // - Managed Identity (recommended for Azure-hosted applications)
-        // - Azure CLI authentication (for local development)
-        // - Environment variables (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID)
-        // - Visual Studio or VS Code authentication
-        var serviceUri = new Uri($"{containerUri.Scheme}://{containerUri.Host}");
-        var credential = new DefaultAzureCredential();
-                    
-        _blobServiceClient = new BlobServiceClient(serviceUri, credential);
-        _logger.LogInformation(
-            "BlobServiceClient created using DefaultAzureCredential. " +
-            "Ensure Azure credentials are configured " +
-            "(Managed Identity, Azure CLI, environment variables, or IDE authentication).");
-    }
 
     private static void ValidateConfiguration(BlobConfigurationOptions config)
     {
@@ -285,7 +252,7 @@ public class BlobFileProvider : IFileProvider, IDisposable
             if (weakRef.TryGetTarget(out var newToken))
             {
                 // Clean up dead references periodically (simple cleanup strategy)
-                if (_tokenCache.Count > 100)
+                if (_tokenCache.Count > MaxTokenCacheBeforeCleanup)
                 {
                     CleanupDeadReferences();
                 }
@@ -388,13 +355,13 @@ public class BlobFileProvider : IFileProvider, IDisposable
                 var properties = await blobClient.GetPropertiesAsync(cancellationToken: token);
                 if (properties.Value.LastModified.Ticks > Interlocked.Read(ref _lastModified))
                 {
-                    _logger.LogWarning("change raised");
+                    _logger.LogInformation("change raised");
                     RaiseChanged();
                 }
             }
             catch (TaskCanceledException)
             {
-                _logger.LogWarning("task cancelled");
+                _logger.LogDebug("task cancelled");
                 break;
             }
             catch (Exception ex)

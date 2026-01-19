@@ -1,5 +1,4 @@
-﻿using System.Threading;
-using Microsoft.Extensions.Primitives;
+﻿using Microsoft.Extensions.Primitives;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 

@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
@@ -15,14 +16,18 @@ public static class ConfigurationBuilderExtensions
         var options = new BlobConfigurationOptions();
         configure(options);
         RequiredBlobNameBlobConfigurationOptionsValidator.ValidateAndThrow(options);
+        
         var blobContainerClientFactory = new BlobContainerClientFactory(options);
         var blobClientFactory = new BlobClientFactory(blobContainerClientFactory);
+        var blobServiceClientLogger = new NullLogger<BlobServiceClientFactory>();
+        var blobServiceClientFactory = new BlobServiceClientFactory(blobServiceClientLogger);
 
         return builder.AddJsonFile(source =>
         {
             source.FileProvider = new BlobFileProvider(
                 blobClientFactory,
-                blobContainerClientFactory, 
+                blobContainerClientFactory,
+                blobServiceClientFactory,
                 options, 
                 logger
             );
@@ -42,8 +47,10 @@ public static class ConfigurationBuilderExtensions
 
         var blobContainerClientFactory = new BlobContainerClientFactory(options);
         var blobClientFactory = new BlobClientFactory(blobContainerClientFactory);
+        var blobServiceClientLogger = new NullLogger<BlobServiceClientFactory>();
+        var blobServiceClientFactory = new BlobServiceClientFactory(blobServiceClientLogger);
 
-        var provider = new BlobFileProvider(blobClientFactory, blobContainerClientFactory, options, logger);
+        var provider = new BlobFileProvider(blobClientFactory, blobContainerClientFactory, blobServiceClientFactory, options, logger);
 
         foreach (var blobInfo in provider.GetDirectoryContents(""))
         {
@@ -67,7 +74,8 @@ public static class ConfigurationBuilderExtensions
 
                 source.FileProvider = new BlobFileProvider(
                     blobClientFactory,
-                    blobContainerClientFactory, 
+                    blobContainerClientFactory,
+                    blobServiceClientFactory,
                     blobOptionsConfiguration,
                     logger
                 );

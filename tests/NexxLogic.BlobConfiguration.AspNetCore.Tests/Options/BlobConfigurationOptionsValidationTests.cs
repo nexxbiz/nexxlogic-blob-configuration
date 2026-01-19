@@ -1,3 +1,4 @@
+using Azure.Storage.Blobs;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -220,11 +221,18 @@ public class BlobConfigurationOptionsValidationTests
     {
         var blobClientFactoryMock = Substitute.For<IBlobClientFactory>();
         var blobContainerClientFactoryMock = Substitute.For<IBlobContainerClientFactory>();
+        var blobServiceClientFactoryMock = Substitute.For<IBlobServiceClientFactory>();
+        
+        // These tests typically don't provide ConnectionString, so return null for legacy mode
+        blobServiceClientFactoryMock.CreateBlobServiceClient(Arg.Any<BlobConfigurationOptions>())
+            .Returns((BlobServiceClient?)null);
+            
         var logger = new NullLogger<BlobFileProvider>();
 
         return new BlobFileProvider(
             blobClientFactoryMock,
             blobContainerClientFactoryMock,
+            blobServiceClientFactoryMock,
             options,
             logger);
     }

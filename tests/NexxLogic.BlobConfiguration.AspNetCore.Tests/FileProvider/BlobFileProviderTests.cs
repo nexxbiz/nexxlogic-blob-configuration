@@ -369,8 +369,13 @@ public class BlobFileProviderTests
 
         var loggerFactory = new NullLoggerFactory();
         var logger = loggerFactory.CreateLogger<BlobFileProvider>();
+        var blobServiceClientFactoryMock = Substitute.For<IBlobServiceClientFactory>();
+        
+        // Configure mock to return null for legacy mode (no ConnectionString or BlobContainerUrl)
+        blobServiceClientFactoryMock.CreateBlobServiceClient(Arg.Any<BlobConfigurationOptions>())
+            .Returns((BlobServiceClient?)null);
 
-        return new BlobFileProvider(blobClientFactoryMock, blobContainerClientFactoryMock, options ?? defaultBlobConfig, logger);
+        return new BlobFileProvider(blobClientFactoryMock, blobContainerClientFactoryMock, blobServiceClientFactoryMock, options ?? defaultBlobConfig, logger);
     }
 
     private BlobConfigurationOptions CreateOptionsWithConnectionString()
@@ -417,9 +422,17 @@ public class BlobFileProviderTests
             MaxFileContentHashSizeMb = options.MaxFileContentHashSizeMb
         };
 
+        var blobServiceClientFactoryMock = Substitute.For<IBlobServiceClientFactory>();
+        var mockBlobServiceClient = Substitute.For<BlobServiceClient>();
+        
+        // Configure mock to return BlobServiceClient for enhanced mode
+        blobServiceClientFactoryMock.CreateBlobServiceClient(Arg.Any<BlobConfigurationOptions>())
+            .Returns(mockBlobServiceClient);
+
         return new BlobFileProvider(
             blobClientFactoryMock,
             blobContainerClientFactoryMock,
+            blobServiceClientFactoryMock,
             optionsWithValidConnectionString,
             logger);
     }

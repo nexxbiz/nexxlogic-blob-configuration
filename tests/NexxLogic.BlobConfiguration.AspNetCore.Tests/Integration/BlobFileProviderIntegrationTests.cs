@@ -9,6 +9,7 @@ using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
 using NSubstitute;
 using System.Collections.Concurrent;
+using NSubstitute.ExceptionExtensions;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.Integration;
 
@@ -141,18 +142,31 @@ public class BlobFileProviderIntegrationTests
     [Fact]
     public void BlobFileProvider_ShouldFallbackGracefully_WhenBlobServiceClientCreationFails()
     {
-        // Arrange - Use invalid connection string to trigger fallback
+        // Arrange - Mock factory to throw exception
         var options = new BlobConfigurationOptions
         {
-            ConnectionString = "invalid-connection-string",
+            ConnectionString = "DefaultEndpointsProtocol=https;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=https://127.0.0.1:10000/devstoreaccount1;",
             ContainerName = ContainerName,
             ReloadInterval = 1000
         };
 
         var logger = Substitute.For<ILogger<BlobFileProvider>>();
+        var blobClientFactoryMock = Substitute.For<IBlobClientFactory>();
+        var blobContainerClientFactoryMock = Substitute.For<IBlobContainerClientFactory>();
+        var blobServiceClientFactoryMock = Substitute.For<IBlobServiceClientFactory>();
+        
+        // Configure factory to throw exception to simulate creation failure
+        blobServiceClientFactoryMock
+            .CreateBlobServiceClient(Arg.Any<BlobConfigurationOptions>())
+            .Throws(new InvalidOperationException("Mock BlobServiceClient creation failure"));
         
         // Act
-        var provider = CreateBlobFileProvider(options, logger);
+        var provider = new BlobFileProvider(
+            blobClientFactoryMock,
+            blobContainerClientFactoryMock,
+            blobServiceClientFactoryMock,
+            options,
+            logger);
         var changeToken = provider.Watch(BlobName);
 
         // Assert
@@ -315,11 +329,30 @@ public class BlobFileProviderIntegrationTests
     {
         var blobClientFactoryMock = Substitute.For<IBlobClientFactory>();
         var blobContainerClientFactoryMock = Substitute.For<IBlobContainerClientFactory>();
+        var blobServiceClientFactoryMock = Substitute.For<IBlobServiceClientFactory>();
+        
+        // Configure mock based on whether we want enhanced or legacy mode
+        if (!string.IsNullOrEmpty(options.ConnectionString) || 
+            (!string.IsNullOrEmpty(options.BlobContainerUrl) && !options.BlobContainerUrl.Contains("?")))
+        {
+            // Enhanced mode - return mock BlobServiceClient
+            var mockBlobServiceClient = Substitute.For<BlobServiceClient>();
+            blobServiceClientFactoryMock.CreateBlobServiceClient(Arg.Any<BlobConfigurationOptions>())
+                .Returns(mockBlobServiceClient);
+        }
+        else
+        {
+            // Legacy mode - return null to trigger fallback
+            blobServiceClientFactoryMock.CreateBlobServiceClient(Arg.Any<BlobConfigurationOptions>())
+                .Returns((BlobServiceClient?)null);
+        }
+        
         logger ??= new NullLogger<BlobFileProvider>();
 
         return new BlobFileProvider(
             blobClientFactoryMock,
             blobContainerClientFactoryMock,
+            blobServiceClientFactoryMock,
             options,
             logger);
     }
@@ -363,11 +396,30 @@ public class BlobFileProviderIntegrationTests
         blobClientFactoryMock.GetBlobClient(Arg.Any<string>()).Returns(blobClient);
 
         var blobContainerClientFactoryMock = Substitute.For<IBlobContainerClientFactory>();
+        var blobServiceClientFactoryMock = Substitute.For<IBlobServiceClientFactory>();
+        
+        // Configure mock based on whether we want enhanced or legacy mode
+        if (!string.IsNullOrEmpty(options.ConnectionString) || 
+            (!string.IsNullOrEmpty(options.BlobContainerUrl) && !options.BlobContainerUrl.Contains("?")))
+        {
+            // Enhanced mode - return mock BlobServiceClient
+            var mockBlobServiceClient = Substitute.For<BlobServiceClient>();
+            blobServiceClientFactoryMock.CreateBlobServiceClient(Arg.Any<BlobConfigurationOptions>())
+                .Returns(mockBlobServiceClient);
+        }
+        else
+        {
+            // Legacy mode - return null
+            blobServiceClientFactoryMock.CreateBlobServiceClient(Arg.Any<BlobConfigurationOptions>())
+                .Returns((BlobServiceClient?)null);
+        }
+        
         var logger = new NullLogger<BlobFileProvider>();
 
         return new BlobFileProvider(
             blobClientFactoryMock,
             blobContainerClientFactoryMock,
+            blobServiceClientFactoryMock,
             options,
             logger);
     }

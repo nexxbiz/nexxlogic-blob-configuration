@@ -297,11 +297,30 @@ public class EnhancedBlobChangeDetectionTests
             .GetBlobContainerClient()
             .Returns(blobContainerClientMock);
 
+        var blobServiceClientFactoryMock = Substitute.For<IBlobServiceClientFactory>();
+        
+        // Configure mock based on whether we want enhanced or legacy mode
+        if (!string.IsNullOrEmpty(options.ConnectionString) || 
+            (!string.IsNullOrEmpty(options.BlobContainerUrl) && !options.BlobContainerUrl.Contains("?")))
+        {
+            // Enhanced mode - return mock BlobServiceClient
+            var mockBlobServiceClient = Substitute.For<BlobServiceClient>();
+            blobServiceClientFactoryMock.CreateBlobServiceClient(Arg.Any<BlobConfigurationOptions>())
+                .Returns(mockBlobServiceClient);
+        }
+        else
+        {
+            // Legacy mode - return null
+            blobServiceClientFactoryMock.CreateBlobServiceClient(Arg.Any<BlobConfigurationOptions>())
+                .Returns((BlobServiceClient?)null);
+        }
+
         logger ??= new NullLogger<BlobFileProvider>();
 
         return new BlobFileProvider(
             blobClientFactoryMock,
             blobContainerClientFactoryMock,
+            blobServiceClientFactoryMock,
             options,
             logger);
     }
