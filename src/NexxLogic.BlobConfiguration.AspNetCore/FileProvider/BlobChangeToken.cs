@@ -51,7 +51,14 @@ internal class BlobChangeToken : IChangeToken, IDisposable
             return; // Already disposed
         }
         
-        _cts.Cancel();
-        _cts.Dispose();
+        try
+        {
+            _cts.Cancel();
+            _cts.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            // CTS was already disposed - safe to ignore
+        }
     }
 }
