@@ -51,7 +51,7 @@ public class BlobFileProviderIntegrationTests
     }
 
     [Fact]
-    public void BlobFileProvider_ShouldHandleConcurrentWatchCalls_Safely()
+    public async Task BlobFileProvider_ShouldHandleConcurrentWatchCalls_Safely()
     {
         // Arrange
         var options = CreateOptionsWithContentBasedStrategy();
@@ -66,7 +66,7 @@ public class BlobFileProviderIntegrationTests
             allTokensWithPaths.Add((token, fileName));
         })).ToArray();
 
-        Task.WaitAll(tasks);
+        await Task.WhenAll(tasks);
 
         // Assert - Just verify tokens are created successfully without exceptions
         var tokensList = allTokensWithPaths.ToList();
@@ -249,7 +249,7 @@ public class BlobFileProviderIntegrationTests
     }
 
     [Fact]
-    public void BlobFileProvider_ShouldMaintainThreadSafety_UnderConcurrentAccess()
+    public async Task BlobFileProvider_ShouldMaintainThreadSafety_UnderConcurrentAccess()
     {
         // Arrange
         var options = CreateOptionsWithContentBasedStrategy();
@@ -272,7 +272,7 @@ public class BlobFileProviderIntegrationTests
             }
         })).ToArray();
 
-        Task.WaitAll(tasks);
+        await Task.WhenAll(tasks);
 
         // Assert
         Assert.Empty(exceptions); // No exceptions should occur during concurrent access
