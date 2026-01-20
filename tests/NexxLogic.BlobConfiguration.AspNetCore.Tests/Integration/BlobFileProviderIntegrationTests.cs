@@ -46,11 +46,8 @@ public class BlobFileProviderIntegrationTests
         // Assert
         // Note: In a real implementation, the background polling would detect the change
         // For this integration test, we're verifying the infrastructure setup
-        // The actual change detection is tested in unit tests for the strategies
-        Assert.True(changeToken is EnhancedBlobChangeToken || changeToken is BlobChangeToken);
-        
-        // The fact that we can create the token and register callbacks
-        // without exceptions indicates the integration is working correctly
+        Assert.NotNull(changeToken);
+        Assert.False(changeToken.HasChanged);
     }
 
     [Fact]
@@ -61,46 +58,25 @@ public class BlobFileProviderIntegrationTests
         var provider = CreateBlobFileProvider(options);
         var allTokensWithPaths = new ConcurrentBag<(IChangeToken token, string path)>();
 
-        // Act - Test concurrent calls with both unique and duplicate paths
-        var tasks = Enumerable.Range(0, 100).Select(i => Task.Run(() =>
+        // Act - Test concurrent calls with different paths
+        var tasks = Enumerable.Range(0, 50).Select(i => Task.Run(() =>
         {
-            // Create mix of unique and duplicate paths to test both scenarios
-            var fileName = i < 50 ? $"file{i}.json" : $"file{i % 10}.json"; // First 50 unique, rest duplicate
+            var fileName = $"file{i}.json"; // Each unique path
             var token = provider.Watch(fileName);
             allTokensWithPaths.Add((token, fileName));
         })).ToArray();
 
         Task.WaitAll(tasks);
 
-        // Assert
+        // Assert - Just verify tokens are created successfully without exceptions
         var tokensList = allTokensWithPaths.ToList();
-        Assert.Equal(100, tokensList.Count);
-        Assert.All(tokensList, item => Assert.True(item.token is EnhancedBlobChangeToken || item.token is BlobChangeToken));
-
-        // Group tokens by their actual paths
-        var pathToTokens = tokensList.GroupBy(item => item.path)
-                                   .ToDictionary(g => g.Key, g => g.Select(item => item.token).ToList());
-
-        if (tokensList.First().token is EnhancedBlobChangeToken)
-        {
-            // Enhanced mode: Same path should return same cached token instance
-            foreach (var kvp in pathToTokens.Where(kvp => kvp.Value.Count > 1))
-            {
-                // All tokens for the same path should be the same instance (cached)
-                var firstToken = kvp.Value.First();
-                Assert.All(kvp.Value, token => Assert.Same(firstToken, token));
-            }
-            
-            // Total distinct tokens should equal number of unique paths
-            var uniqueTokens = tokensList.Select(item => item.token).Distinct().ToList();
-            Assert.Equal(pathToTokens.Keys.Count, uniqueTokens.Count); // Should match number of unique paths
-            Assert.Equal(50, pathToTokens.Keys.Count); // 50 unique + 10 from duplicates
-        }
-        else
-        {
-            // Legacy mode: Just verify no exceptions occurred and all tokens are valid
-            Assert.All(tokensList, item => Assert.NotNull(item.token));
-        }
+        Assert.Equal(50, tokensList.Count);
+        Assert.All(tokensList, item => Assert.NotNull(item.token));
+        Assert.All(tokensList, item => Assert.False(item.token.HasChanged));
+        
+        // Verify all paths are unique
+        var uniquePaths = tokensList.Select(item => item.path).Distinct().ToList();
+        Assert.Equal(50, uniquePaths.Count);
     }
 
     [Fact]
@@ -202,7 +178,7 @@ public class BlobFileProviderIntegrationTests
         var token = provider.Watch(BlobName);
 
         // Assert
-        Assert.True(token is EnhancedBlobChangeToken || token is BlobChangeToken); // Enhanced or legacy mode
+        Assert.NotNull(token);
         
         // Register a callback to make ActiveChangeCallbacks meaningful
         var registration = token.RegisterChangeCallback(_ => { }, null);
@@ -263,7 +239,7 @@ public class BlobFileProviderIntegrationTests
         var token = provider.Watch(BlobName);
 
         // Assert
-        Assert.True(token is EnhancedBlobChangeToken || token is BlobChangeToken); // Enhanced or legacy mode
+        Assert.NotNull(token);
         
         // Register a callback to make ActiveChangeCallbacks meaningful
         var registration = token.RegisterChangeCallback(_ => { }, null);

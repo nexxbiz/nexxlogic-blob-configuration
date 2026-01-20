@@ -52,15 +52,9 @@ public class EnhancedBlobChangeDetectionTests
         // Act
         var changeToken = provider.Watch(BlobName);
 
-        // Assert - Enhanced mode might fallback to legacy if BlobServiceClient creation fails
-        if (changeToken is EnhancedBlobChangeToken)
-        {
-            Assert.IsType<EnhancedBlobChangeToken>(changeToken);
-        }
-        else
-        {
-            Assert.IsType<BlobChangeToken>(changeToken); // Fallback to legacy mode
-        }
+        // Assert - Should create enhanced token with intelligent strategy selection
+        // Note: If this fails, it indicates the enhanced mode setup is not working correctly
+        Assert.IsType<EnhancedBlobChangeToken>(changeToken);
         
         // Register a callback to make ActiveChangeCallbacks meaningful
         var registration = changeToken.RegisterChangeCallback(_ => { }, null);
@@ -80,21 +74,10 @@ public class EnhancedBlobChangeDetectionTests
         var token1 = provider.Watch(BlobName);
         var token2 = provider.Watch(BlobName); // Same blob path should return cached token
 
-        // Assert - Check if enhanced mode is working
-        if (token1 is EnhancedBlobChangeToken)
-        {
-            // Enhanced Mode: Same blob path should return same cached token instance
-            Assert.IsType<EnhancedBlobChangeToken>(token1);
-            Assert.IsType<EnhancedBlobChangeToken>(token2);
-            Assert.Same(token1, token2);
-        }
-        else
-        {
-            // Legacy Mode: All Watch() calls return the same provider-level token anyway
-            Assert.IsType<BlobChangeToken>(token1);
-            Assert.IsType<BlobChangeToken>(token2);
-            Assert.Same(token1, token2);
-        }
+        // Assert - Enhanced mode should cache tokens per blob path
+        Assert.IsType<EnhancedBlobChangeToken>(token1);
+        Assert.IsType<EnhancedBlobChangeToken>(token2);
+        Assert.Same(token1, token2); // Same path = same cached token instance
     }
 
     [Fact]
@@ -239,7 +222,7 @@ public class EnhancedBlobChangeDetectionTests
     public void BlobFileProvider_ShouldReuseStrategyInstance_AcrossMultipleTokens()
     {
         // This test verifies that different blob paths get different cached tokens
-        // but strategy instances are reused for performance
+        // in enhanced mode, testing the strategy reuse functionality
         
         // Arrange
         var options = CreateOptionsWithConnectionString();
@@ -249,24 +232,12 @@ public class EnhancedBlobChangeDetectionTests
         var token1 = provider.Watch(BlobName); // "settings.json"
         var token2 = provider.Watch("other.json"); // Different blob path
 
-        // Assert - Check if enhanced mode is working
-        if (token1 is EnhancedBlobChangeToken)
-        {
-            // Enhanced Mode: Different blob paths should return different cached token instances
-            Assert.IsType<EnhancedBlobChangeToken>(token1);
-            Assert.IsType<EnhancedBlobChangeToken>(token2);
-            Assert.NotSame(token1, token2); // Different paths = different tokens
-        }
-        else
-        {
-            // Legacy Mode: All Watch() calls return the same provider-level token
-            Assert.IsType<BlobChangeToken>(token1);
-            Assert.IsType<BlobChangeToken>(token2);
-            Assert.Same(token1, token2); // Legacy mode = same token for all paths
-        }
+        // Assert - Enhanced mode should create different tokens for different paths
+        Assert.IsType<EnhancedBlobChangeToken>(token1);
+        Assert.IsType<EnhancedBlobChangeToken>(token2);
+        Assert.NotSame(token1, token2); // Different paths = different tokens
         
-        // Both tokens should work independently regardless of mode
-        // Register callbacks to make ActiveChangeCallbacks meaningful
+        // Both tokens should work independently
         var registration1 = token1.RegisterChangeCallback(_ => { }, null);
         var registration2 = token2.RegisterChangeCallback(_ => { }, null);
         

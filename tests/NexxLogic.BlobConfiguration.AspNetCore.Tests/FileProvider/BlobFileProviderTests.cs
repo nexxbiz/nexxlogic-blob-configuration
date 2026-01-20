@@ -251,24 +251,67 @@ public class BlobFileProviderTests
     }
 
     [Fact]
-    public void BlobFileProvider_ShouldReturnEnhancedTokens_WhenConnectionStringProvided()
+    public void BlobFileProvider_ShouldCreateEnhancedTokens_WhenConnectionStringProvided()
     {
-        // Arrange
+        // Arrange - Use enhanced provider setup that should create enhanced tokens
         var options = CreateOptionsWithConnectionString();
         using var provider = CreateBlobFileProvider(options);
 
         // Act
         var token = provider.Watch("test.json");
 
-        // Assert
-        var tokenType = token.GetType().Name;
-        Assert.True(token is EnhancedBlobChangeToken, $"Expected EnhancedBlobChangeToken, got {tokenType}. This indicates BlobServiceClient was not created successfully.");
+        // Assert - Should get enhanced token when properly configured
+        Assert.IsType<EnhancedBlobChangeToken>(token);
+        Assert.False(token.HasChanged);
+        
+        // Verify basic functionality
+        var callbackCalled = false;
+        var registration = token.RegisterChangeCallback(_ => { callbackCalled = true; }, null);
+        
+        Assert.True(token.ActiveChangeCallbacks);
+        Assert.False(callbackCalled);
+        
+        registration.Dispose();
     }
 
     [Fact]
-    public void BlobFileProvider_ShouldCacheTokens_CorrectlyPerBlobPath()
+    public void BlobFileProvider_ShouldReturnLegacyToken_InLegacyMode()
     {
-        // Arrange
+        // Arrange - Use CreateSut which forces legacy mode
+        var sut = CreateSut(out var _);
+
+        // Act
+        var token = sut.Watch("test.json");
+
+        // Assert - Should get legacy token
+        Assert.IsType<BlobChangeToken>(token);
+        Assert.False(token.HasChanged);
+    }
+
+    [Fact]
+    public void BlobFileProvider_ShouldReturnSameTokenForAllPaths_InLegacyMode()
+    {
+        // Arrange - Use CreateSut which forces legacy mode (no ConnectionString)
+        var sut = CreateSut(out var _);
+
+        // Act - Create tokens for different blob paths
+        var token1 = sut.Watch("config1.json");
+        var token2 = sut.Watch("config2.json");
+        var token3 = sut.Watch("config1.json"); // Same as first
+
+        // Assert - Legacy mode: all Watch() calls return the same provider-level token
+        Assert.IsType<BlobChangeToken>(token1);
+        Assert.IsType<BlobChangeToken>(token2);
+        Assert.IsType<BlobChangeToken>(token3);
+        
+        Assert.Same(token1, token2); // Different paths = same token in legacy
+        Assert.Same(token1, token3); // Same path = same token (but it's the same as different paths too)
+    }
+
+    [Fact]
+    public void BlobFileProvider_ShouldCacheTokensPerPath_InEnhancedMode()
+    {
+        // Arrange - Use enhanced provider setup
         var options = CreateOptionsWithConnectionString();
         using var provider = CreateBlobFileProvider(options);
 
@@ -277,37 +320,44 @@ public class BlobFileProviderTests
         var token1B = provider.Watch("config1.json"); // Same path, should be cached
         var token2 = provider.Watch("config2.json");  // Different path, should be new
 
-        // Debug: Check what types of tokens we got
-        var token1AType = token1A.GetType().Name;
-        var token1BType = token1B.GetType().Name;
-        var token2Type = token2.GetType().Name;
+        // Assert - Enhanced mode should cache tokens per blob path
+        Assert.IsType<EnhancedBlobChangeToken>(token1A);
+        Assert.IsType<EnhancedBlobChangeToken>(token1B);
+        Assert.IsType<EnhancedBlobChangeToken>(token2);
+        
+        // Same path should return same cached token
+        Assert.Same(token1A, token1B); 
+        
+        // Different path should return different token
+        Assert.NotSame(token1A, token2); 
+    }
 
-        // If we get enhanced tokens, they should be cached
-        if (token1A is EnhancedBlobChangeToken)
-        {
-            // Assert - Verify we got enhanced tokens (not legacy BlobChangeToken)
-            Assert.True(token1A is EnhancedBlobChangeToken, $"Expected EnhancedBlobChangeToken, got {token1AType}");
-            Assert.True(token1B is EnhancedBlobChangeToken, $"Expected EnhancedBlobChangeToken, got {token1BType}");
-            Assert.True(token2 is EnhancedBlobChangeToken, $"Expected EnhancedBlobChangeToken, got {token2Type}");
-            
-            // Assert - Same path should return same cached token
-            Assert.Same(token1A, token1B); 
-            
-            // Assert - Different path should return different token
-            Assert.NotSame(token1A, token2); 
-        }
-        else
-        {
-            // If we fall back to legacy mode, tokens will be the same legacy instance
-            // This is expected if BlobServiceClient creation fails in test environment
-            Assert.True(token1A is BlobChangeToken, $"Expected BlobChangeToken in fallback mode, got {token1AType}");
-            Assert.True(token1B is BlobChangeToken, $"Expected BlobChangeToken in fallback mode, got {token1BType}");
-            Assert.True(token2 is BlobChangeToken, $"Expected BlobChangeToken in fallback mode, got {token2Type}");
-            
-            // In legacy mode, all Watch() calls return the same provider-level token
-            Assert.Same(token1A, token1B);
-            Assert.Same(token1A, token2);
-        }
+    [Fact]
+    public void BlobFileProvider_ShouldFallbackToLegacy_WhenServiceClientCreationFails()
+    {
+        // Arrange - Create provider that will fail to create BlobServiceClient
+        var options = CreateOptionsWithConnectionString();
+        var blobClientFactoryMock = Substitute.For<IBlobClientFactory>();
+        var blobContainerClientFactoryMock = Substitute.For<IBlobContainerClientFactory>();
+        var blobServiceClientFactoryMock = Substitute.For<IBlobServiceClientFactory>();
+        
+        // Configure factory to return null (simulates creation failure)
+        blobServiceClientFactoryMock.CreateBlobServiceClient(Arg.Any<BlobConfigurationOptions>())
+            .Returns((BlobServiceClient?)null);
+
+        var logger = new NullLogger<BlobFileProvider>();
+        var provider = new BlobFileProvider(
+            blobClientFactoryMock,
+            blobContainerClientFactoryMock,
+            blobServiceClientFactoryMock,
+            options,
+            logger);
+
+        // Act
+        var token = provider.Watch("test.json");
+
+        // Assert - Should fallback to legacy token
+        Assert.IsType<BlobChangeToken>(token);
     }
 
     [Fact]
