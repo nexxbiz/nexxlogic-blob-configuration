@@ -8,11 +8,9 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 
 /// <summary>
 /// Enhanced change token that monitors blob changes with optimized change detection strategies.
-/// Implements both IDisposable and IAsyncDisposable.
+/// Implements IAsyncDisposable for proper resource cleanup.
 /// 
 /// IMPORTANT: For proper resource cleanup, always use 'await using' or call DisposeAsync() directly.
-/// The synchronous Dispose() method is provided for compatibility but may not properly clean up
-/// background tasks in high-throughput scenarios.
 /// 
 /// Example:
 /// <code>
@@ -23,7 +21,7 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 /// finally { await token.DisposeAsync(); }
 /// </code>
 /// </summary>
-internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDisposable
+internal class EnhancedBlobChangeToken : IChangeToken, IAsyncDisposable
 {
     private readonly BlobServiceClient _blobServiceClient;
     private readonly string _containerName;
@@ -300,7 +298,7 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
     }
     /// <summary>
     /// Asynchronously disposes the EnhancedBlobChangeToken with proper cleanup of all resources.
-    /// This is the PREFERRED disposal method as it:
+    /// This method:
     /// - Properly cancels and waits for the background watching task to complete
     /// - Ensures all resources (timers, cancellation tokens) are fully disposed
     /// - Prevents unobserved task exceptions
@@ -359,51 +357,6 @@ internal class EnhancedBlobChangeToken : IChangeToken, IDisposable, IAsyncDispos
         }
     }
 
-    /// <summary>
-    /// Synchronously disposes the EnhancedBlobChangeToken.
-    /// WARNING: This method does not wait for the background watching task to complete,
-    /// which may result in unobserved task exceptions or incomplete cleanup.
-    /// For proper resource cleanup, prefer <see cref="DisposeAsync"/> when possible.
-    /// This method exists primarily to satisfy the IDisposable contract for callers
-    /// that cannot use asynchronous disposal.
-    /// </summary>
-    public void Dispose()
-    {
-        // Synchronous disposal for IDisposable compatibility
-        // This should ideally not be used in high-throughput scenarios
-        // Prefer DisposeAsync() when possible
-        
-        // Use Interlocked.CompareExchange to atomically check and set disposal flag
-        // This prevents race conditions where multiple threads could both proceed with disposal
-        // Returns the original value - if it was already 1 (disposed), we return early
-        if (Interlocked.CompareExchange(ref _disposed, 1, 0) == 1)
-        {
-            return;
-        }
-
-        try
-        {
-            // For synchronous disposal, we don't block on task completion
-            // Just signal cancellation and dispose resources immediately
-            _cts.Cancel();
-            
-            lock (_lock)
-            {
-                _callbacks.Clear();
-            }
-            
-            // Dispose the debounce timer if it exists
-            _debounceTimer?.Dispose();
-            
-            _cts.Dispose();
-            
-            _logger.LogDebug("EnhancedBlobChangeToken disposed synchronously for blob {BlobPath} (task may still be running)", _blobPath);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error during synchronous disposal of EnhancedBlobChangeToken for blob {BlobPath}", _blobPath);
-        }
-    }
 
     private class CallbackRegistration(Action unregister) : IDisposable
     {

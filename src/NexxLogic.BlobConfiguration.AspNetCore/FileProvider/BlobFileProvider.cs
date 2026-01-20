@@ -33,7 +33,7 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 /// 
 /// If authentication fails, the provider falls back to legacy mode with reduced functionality.
 /// </summary>
-public class BlobFileProvider : IFileProvider, IDisposable
+public class BlobFileProvider : IFileProvider, IDisposable, IAsyncDisposable
 {
     private const int MaxTokenCacheBeforeCleanup = 100;
     private readonly IBlobClientFactory _blobClientFactory;
@@ -413,6 +413,22 @@ public class BlobFileProvider : IFileProvider, IDisposable
 
     public void Dispose()
     {
+        // Delegate to async disposal and block
+        // This is not ideal but necessary for IDisposable compatibility
+        try
+        {
+            DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during synchronous disposal of BlobFileProvider");
+        }
+        
+        GC.SuppressFinalize(this);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
         // Atomically check and set disposal flag to prevent concurrent disposal
         if (Interlocked.CompareExchange(ref _disposed, 1, 0) == 1)
         {
@@ -430,15 +446,15 @@ public class BlobFileProvider : IFileProvider, IDisposable
             _logger.LogWarning(ex, "Error disposing legacy change token");
         }
 
-        // Dispose all cached EnhancedBlobChangeToken instances to clean up their resources
-        DisposeEnhancedTokens();
+        // Dispose all cached EnhancedBlobChangeToken instances asynchronously
+        await DisposeEnhancedTokensAsync();
 
-        _logger.LogDebug("BlobFileProvider disposed");
+        _logger.LogDebug("BlobFileProvider disposed asynchronously");
         
         GC.SuppressFinalize(this);
     }
 
-    private void DisposeEnhancedTokens()
+    private async ValueTask DisposeEnhancedTokensAsync()
     {
         // Collect all live tokens from the cache using explicit filtering
         var tokensToDispose = _tokenCache
@@ -450,12 +466,12 @@ public class BlobFileProvider : IFileProvider, IDisposable
         // Clear the cache immediately to prevent new references
         _tokenCache.Clear();
         
-        // Dispose all collected tokens
+        // Properly dispose all enhanced tokens asynchronously
         foreach (var token in tokensToDispose)
         {
             try
             {
-                token.Dispose();
+                await token.DisposeAsync();
             }
             catch (Exception ex)
             {

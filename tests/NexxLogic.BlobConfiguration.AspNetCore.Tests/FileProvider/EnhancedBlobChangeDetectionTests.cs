@@ -153,7 +153,7 @@ public class EnhancedBlobChangeDetectionTests
     [Theory]
     [InlineData("BlobFileProvider")]
     [InlineData("EnhancedBlobChangeToken")]
-    public void DisposableObjects_ShouldDisposeCorrectly_WithoutExceptions(string objectType)
+    public async Task DisposableObjects_ShouldDisposeCorrectly_WithoutExceptions(string objectType)
     {
         // Arrange
         var options = CreateOptionsWithConnectionString();
@@ -174,9 +174,14 @@ public class EnhancedBlobChangeDetectionTests
         else // EnhancedBlobChangeToken
         {
             var token = provider.Watch(BlobName) as EnhancedBlobChangeToken;
+            Assert.NotNull(token); // Ensure we actually got an enhanced token
             
-            var exception = Record.Exception(() => token?.Dispose());
+            // Test async disposal (the proper way for EnhancedBlobChangeToken)
+            var exception = await Record.ExceptionAsync(async () => await token.DisposeAsync());
             Assert.Null(exception);
+            
+            // Verify token is disposed by checking if it throws ObjectDisposedException
+            Assert.Throws<ObjectDisposedException>(() => token.RegisterChangeCallback(_ => { }, null));
         }
     }
 

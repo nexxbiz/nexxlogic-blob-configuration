@@ -16,10 +16,10 @@ public class EnhancedBlobChangeTokenTests
     private readonly ILogger _logger = new NullLogger<EnhancedBlobChangeTokenTests>();
 
     [Fact]
-    public void EnhancedBlobChangeToken_ShouldBeValidAndNotChanged_Initially()
+    public async Task EnhancedBlobChangeToken_ShouldBeValidAndNotChanged_Initially()
     {
         // Arrange & Act
-        using var token = CreateDefaultToken();
+        await using var token = CreateDefaultToken();
 
         // Assert
         Assert.NotNull(token);
@@ -28,10 +28,10 @@ public class EnhancedBlobChangeTokenTests
     }
 
     [Fact]
-    public void EnhancedBlobChangeToken_ShouldReturnCorrectActiveChangeCallbacks()
+    public async Task EnhancedBlobChangeToken_ShouldReturnCorrectActiveChangeCallbacks()
     {
         // Arrange
-        using var token = CreateDefaultToken();
+        await using var token = CreateDefaultToken();
         
         // Initially should be false (no callbacks registered)
         Assert.False(token.ActiveChangeCallbacks);
@@ -62,7 +62,7 @@ public class EnhancedBlobChangeTokenTests
     }
 
     [Fact]
-    public void EnhancedBlobChangeToken_ShouldReturnFalseActiveChangeCallbacks_WhenDisposed()
+    public async Task EnhancedBlobChangeToken_ShouldReturnFalseActiveChangeCallbacks_WhenDisposed()
     {
         // Arrange
         var token = CreateDefaultToken();
@@ -72,7 +72,7 @@ public class EnhancedBlobChangeTokenTests
         Assert.True(token.ActiveChangeCallbacks);
         
         // Act - Dispose the token
-        token.Dispose();
+        await token.DisposeAsync();
         
         // Assert - Should be false after disposal, even with registered callbacks
         Assert.False(token.ActiveChangeCallbacks);
@@ -84,10 +84,10 @@ public class EnhancedBlobChangeTokenTests
     [Theory]
     [InlineData(1, false)] // Single callback registration
     [InlineData(2, false)] // Multiple callback registrations  
-    public void EnhancedBlobChangeToken_ShouldRegisterCallbacks_Successfully(int callbackCount, bool shouldExecuteImmediately)
+    public async Task EnhancedBlobChangeToken_ShouldRegisterCallbacks_Successfully(int callbackCount, bool shouldExecuteImmediately)
     {
         // Arrange
-        using var token = CreateDefaultToken();
+        await using var token = CreateDefaultToken();
         var (callbacksExecuted, registrations) = RegisterMultipleCallbacks(token, callbackCount);
 
         // Assert
@@ -96,10 +96,10 @@ public class EnhancedBlobChangeTokenTests
     }
 
     [Fact]
-    public void EnhancedBlobChangeToken_ShouldUnregisterCallback_WhenRegistrationDisposed()
+    public async Task EnhancedBlobChangeToken_ShouldUnregisterCallback_WhenRegistrationDisposed()
     {
         // Arrange
-        using var token = CreateDefaultToken();
+        await using var token = CreateDefaultToken();
 
         // Act
         var registration = token.RegisterChangeCallback(_ => { }, null);
@@ -110,11 +110,11 @@ public class EnhancedBlobChangeTokenTests
     }
 
     [Fact]
-    public void EnhancedBlobChangeToken_ShouldThrowObjectDisposedException_WhenRegisteringAfterDisposal()
+    public async Task EnhancedBlobChangeToken_ShouldThrowObjectDisposedException_WhenRegisteringAfterDisposal()
     {
         // Arrange
         var token = CreateDefaultToken();
-        token.Dispose();
+        await token.DisposeAsync();
 
         // Act & Assert
         Assert.Throws<ObjectDisposedException>(() => token.RegisterChangeCallback(_ => { }, null));
@@ -135,11 +135,11 @@ public class EnhancedBlobChangeTokenTests
             registrations.Add(token.RegisterChangeCallback(_ => { }, null));
         }
 
-        // Act & Assert
-        AssertGracefulDisposal(() =>
+        // Act + Assert
+        AssertGracefulDisposal(async () =>
         {
             CleanupRegistrations(registrations);
-            token.Dispose();
+            await token.DisposeAsync();
         });
     }
 
@@ -150,10 +150,10 @@ public class EnhancedBlobChangeTokenTests
         var token = CreateDefaultToken();
 
         // Act & Assert
-        AssertGracefulDisposal(() =>
+        AssertGracefulDisposal(async () =>
         {
-            token.Dispose();
-            token.Dispose(); // Second disposal should be safe
+            await token.DisposeAsync();
+            await token.DisposeAsync(); // Second disposal should be safe
         });
     }
 
@@ -201,14 +201,14 @@ public class EnhancedBlobChangeTokenTests
     }
 
     [Fact]
-    public void EnhancedBlobChangeToken_ShouldShareBlobFingerprints_BetweenInstances()
+    public async Task EnhancedBlobChangeToken_ShouldShareBlobFingerprints_BetweenInstances()
     {
         // Arrange
         var sharedBlobFingerprints = new ConcurrentDictionary<string, string>();
 
         // Act - Create two tokens sharing the same content hash dictionary
-        using var token1 = CreateTokenWithPath("file1.json", sharedBlobFingerprints);
-        using var token2 = CreateTokenWithPath("file2.json", sharedBlobFingerprints);
+        await using var token1 = CreateTokenWithPath("file1.json", sharedBlobFingerprints);
+        await using var token2 = CreateTokenWithPath("file2.json", sharedBlobFingerprints);
 
         // Assert - Both tokens should be created successfully and share content hashes
         Assert.NotNull(token1);
@@ -247,17 +247,17 @@ public class EnhancedBlobChangeTokenTests
         var token2 = CreateDefaultToken();
 
         // Act & Assert - Both disposal patterns should work
-        AssertGracefulDisposal(() => token1.Dispose());
-        AssertGracefulDisposal(() => token2.DisposeAsync().GetAwaiter().GetResult());
+        AssertGracefulDisposal(async void () => await token1.DisposeAsync());
+        AssertGracefulDisposal(async () => await token2.DisposeAsync());
     }
 
     [Theory]
     [InlineData(true)] // Test callback that registers another callback
     [InlineData(false)] // Test callback that unregisters itself
-    public void EnhancedBlobChangeToken_ShouldAvoidDeadlocks_WhenCallbacksModifyRegistrations(bool registerInCallback)
+    public async Task EnhancedBlobChangeToken_ShouldAvoidDeadlocks_WhenCallbacksModifyRegistrations(bool registerInCallback)
     {
         // Arrange
-        using var token = CreateDefaultToken();
+        await using var token = CreateDefaultToken();
         var callbackExecuted = false;
         var additionalRegistrations = new List<IDisposable>();
 
@@ -407,11 +407,11 @@ public class EnhancedBlobChangeTokenTests
         Assert.Null(exception);
     }
 
-    private static void AssertGracefulCreation(Func<IDisposable> createAction)
+    private static async Task AssertGracefulCreation(Func<IAsyncDisposable> createAction)
     {
-        var exception = Record.Exception(() =>
+        var exception = await Record.ExceptionAsync(async () =>
         {
-            using var disposable = createAction();
+            await using var disposable = createAction();
         });
         Assert.Null(exception);
     }
