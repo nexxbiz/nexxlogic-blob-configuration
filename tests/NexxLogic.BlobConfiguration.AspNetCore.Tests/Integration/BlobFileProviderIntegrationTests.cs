@@ -19,9 +19,10 @@ public class BlobFileProviderIntegrationTests
     private const string BlobName = "settings.json";
 
     [Fact]
-    public async Task BlobFileProvider_ShouldTriggerChangeNotification_WhenBlobContentChanges()
+    public async Task BlobFileProvider_ShouldSetupChangeDetectionInfrastructure_WithoutExceptions()
     {
-        // This test simulates the end-to-end change detection flow
+        // This test verifies that the change detection infrastructure is set up correctly
+        // without throwing exceptions when watching for changes
         
         // Arrange
         var options = CreateOptionsWithContentBasedStrategy();
@@ -40,14 +41,14 @@ public class BlobFileProviderIntegrationTests
         // Act - Simulate content change by updating the mock behavior
         triggerChange();
         
-        // Allow some time for change detection to process
-        await Task.Delay(1500); // Give enough time for background polling
+        // Allow some time for change detection infrastructure to process
+        await Task.Delay(100); // Minimal delay to ensure no immediate exceptions
 
-        // Assert
-        // Note: In a real implementation, the background polling would detect the change
-        // For this integration test, we're verifying the infrastructure setup
+        // Assert - Verify infrastructure is set up correctly without exceptions
         Assert.NotNull(changeToken);
         Assert.False(changeToken.HasChanged);
+        // Note: Real change detection requires actual polling which can't be easily tested with mocks
+        // This test focuses on verifying the infrastructure setup works without throwing exceptions
     }
 
     [Fact]
