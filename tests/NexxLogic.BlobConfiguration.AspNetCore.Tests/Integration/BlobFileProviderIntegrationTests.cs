@@ -40,9 +40,6 @@ public class BlobFileProviderIntegrationTests
 
         // Act - Simulate content change by updating the mock behavior
         triggerChange();
-        
-        // Allow some time for change detection infrastructure to process
-        await Task.Delay(100); // Minimal delay to ensure no immediate exceptions
 
         // Assert - Verify infrastructure is set up correctly without exceptions
         Assert.NotNull(changeToken);
