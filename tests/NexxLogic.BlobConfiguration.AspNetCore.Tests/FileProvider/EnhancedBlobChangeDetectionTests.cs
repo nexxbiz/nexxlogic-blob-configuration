@@ -56,10 +56,13 @@ public class EnhancedBlobChangeDetectionTests
         // Note: If this fails, it indicates the enhanced mode setup is not working correctly
         Assert.IsType<EnhancedBlobChangeToken>(changeToken);
         
-        // Register a callback to make ActiveChangeCallbacks meaningful
-        var registration = changeToken.RegisterChangeCallback(_ => { }, null);
+        // ActiveChangeCallbacks should be true when token is not disposed (standard IChangeToken behavior)
         Assert.True(changeToken.ActiveChangeCallbacks);
         Assert.False(changeToken.HasChanged);
+        
+        // Test callback registration works correctly
+        var registration = changeToken.RegisterChangeCallback(_ => { }, null);
+        Assert.True(changeToken.ActiveChangeCallbacks); // Still true after registration
         registration.Dispose();
     }
 

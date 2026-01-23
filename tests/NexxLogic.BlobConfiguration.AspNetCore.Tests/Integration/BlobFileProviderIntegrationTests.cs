@@ -19,7 +19,7 @@ public class BlobFileProviderIntegrationTests
     private const string BlobName = "settings.json";
 
     [Fact]
-    public async Task BlobFileProvider_ShouldSetupChangeDetectionInfrastructure_WithoutExceptions()
+    public void BlobFileProvider_ShouldSetupChangeDetectionInfrastructure_WithoutExceptions()
     {
         // This test verifies that the change detection infrastructure is set up correctly
         // without throwing exceptions when watching for changes
@@ -44,6 +44,7 @@ public class BlobFileProviderIntegrationTests
         // Assert - Verify infrastructure is set up correctly without exceptions
         Assert.NotNull(changeToken);
         Assert.False(changeToken.HasChanged);
+        
         // Note: Real change detection requires actual polling which can't be easily tested with mocks
         // This test focuses on verifying the infrastructure setup works without throwing exceptions
     }
@@ -178,7 +179,10 @@ public class BlobFileProviderIntegrationTests
         // Assert
         Assert.NotNull(token);
         
-        // Register a callback to make ActiveChangeCallbacks meaningful
+        // ActiveChangeCallbacks should be true when token is not disposed (standard IChangeToken behavior)  
+        Assert.True(token.ActiveChangeCallbacks);
+        
+        // Test callback registration works
         var registration = token.RegisterChangeCallback(_ => { }, null);
         Assert.True(token.ActiveChangeCallbacks);
         registration.Dispose();
@@ -239,10 +243,13 @@ public class BlobFileProviderIntegrationTests
         // Assert
         Assert.NotNull(token);
         
-        // Register a callback to make ActiveChangeCallbacks meaningful
-        var registration = token.RegisterChangeCallback(_ => { }, null);
+        // ActiveChangeCallbacks should be true when token is not disposed (standard IChangeToken behavior)
         Assert.True(token.ActiveChangeCallbacks);
         Assert.False(token.HasChanged);
+        
+        // Test callback registration works
+        var registration = token.RegisterChangeCallback(_ => { }, null);
+        Assert.True(token.ActiveChangeCallbacks);
         registration.Dispose();
     }
 

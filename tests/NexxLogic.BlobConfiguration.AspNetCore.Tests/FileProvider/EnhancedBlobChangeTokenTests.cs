@@ -24,7 +24,7 @@ public class EnhancedBlobChangeTokenTests
         // Assert
         Assert.NotNull(token);
         Assert.False(token.HasChanged);
-        Assert.False(token.ActiveChangeCallbacks); // Should be false until callbacks are registered
+        Assert.True(token.ActiveChangeCallbacks); // Should be true when not disposed (standard IChangeToken behavior)
     }
 
     [Fact]
@@ -33,32 +33,32 @@ public class EnhancedBlobChangeTokenTests
         // Arrange
         await using var token = CreateDefaultToken();
         
-        // Initially should be false (no callbacks registered)
-        Assert.False(token.ActiveChangeCallbacks);
+        // Should be true when not disposed (standard IChangeToken behavior)
+        Assert.True(token.ActiveChangeCallbacks);
         
         // Act - Register a callback
         var registration1 = token.RegisterChangeCallback(_ => { }, null);
         
-        // Assert - Should now be true
+        // Assert - Should still be true (not disposed)
         Assert.True(token.ActiveChangeCallbacks);
         
         // Act - Register another callback
         var registration2 = token.RegisterChangeCallback(_ => { }, null);
         
-        // Assert - Should still be true (multiple callbacks)
+        // Assert - Should still be true (not disposed)
         Assert.True(token.ActiveChangeCallbacks);
         
         // Act - Unregister one callback
         registration1.Dispose();
         
-        // Assert - Should still be true (one callback remains)
+        // Assert - Should still be true (not disposed)
         Assert.True(token.ActiveChangeCallbacks);
         
         // Act - Unregister the last callback
         registration2.Dispose();
         
-        // Assert - Should be false again (no callbacks left)
-        Assert.False(token.ActiveChangeCallbacks);
+        // Assert - Should still be true (not disposed, standard behavior doesn't depend on callback count)
+        Assert.True(token.ActiveChangeCallbacks);
     }
 
     [Fact]

@@ -44,22 +44,11 @@ internal class EnhancedBlobChangeToken : IChangeToken, IAsyncDisposable
     public bool HasChanged => _hasChanged;
     
     /// <summary>
-    /// Gets a value indicating whether there are any active change callbacks registered.
-    /// Returns true if the token is not disposed AND has callbacks registered.
+    /// Gets a value indicating whether the token supports active change callbacks.
+    /// Returns true if the token is not disposed and can accept callback registrations.
+    /// This follows the standard IChangeToken contract.
     /// </summary>
-    public bool ActiveChangeCallbacks 
-    {
-        get
-        {
-            if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0)
-                return false;
-                
-            lock (_lock)
-            {
-                return _callbacks.Count > 0;
-            }
-        }
-    }
+    public bool ActiveChangeCallbacks => Interlocked.CompareExchange(ref _disposed, 0, 0) == 0;
 
     public EnhancedBlobChangeToken(
         BlobServiceClient blobServiceClient,
