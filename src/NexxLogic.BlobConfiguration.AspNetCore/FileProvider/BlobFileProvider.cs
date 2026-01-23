@@ -36,6 +36,7 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 public class BlobFileProvider : IFileProvider, IDisposable, IAsyncDisposable
 {
     private const int MaxTokenCacheBeforeCleanup = 100;
+    private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(5); // Periodic cleanup every 5 minutes
     private readonly IBlobClientFactory _blobClientFactory;
     private readonly IBlobContainerClientFactory _blobContainerClientFactory;
     private readonly BlobConfigurationOptions _blobConfig;
@@ -49,6 +50,7 @@ public class BlobFileProvider : IFileProvider, IDisposable, IAsyncDisposable
     private readonly IChangeDetectionStrategyFactory _strategyFactory;
     private readonly ConcurrentDictionary<string, string> _blobFingerprints;
     private readonly ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>> _tokenCache;
+    private readonly Timer _cleanupTimer; // Periodic cleanup timer
     private int _disposed; // 0 = false, 1 = true (used with Interlocked for thread-safety)
 
     private BlobChangeToken _changeToken = new();
@@ -88,6 +90,13 @@ public class BlobFileProvider : IFileProvider, IDisposable, IAsyncDisposable
 
         _blobFingerprints = new ConcurrentDictionary<string, string>();
         _tokenCache = new ConcurrentDictionary<string, WeakReference<EnhancedBlobChangeToken>>();
+        
+        // Initialize periodic cleanup timer - starts immediately and repeats every CleanupInterval
+        _cleanupTimer = new Timer(
+            callback: _ => PeriodicCleanup(),
+            state: null,
+            dueTime: CleanupInterval,
+            period: CleanupInterval);
         
         // Use the factory to create BlobServiceClient with exception handling
         try
@@ -251,10 +260,10 @@ public class BlobFileProvider : IFileProvider, IDisposable, IAsyncDisposable
             // Try to get the token from the (possibly updated) weak reference.
             if (weakRef.TryGetTarget(out var newToken))
             {
-                // Clean up dead references periodically (simple cleanup strategy)
+                // Threshold-based cleanup as a backstop for high-churn scenarios
                 if (_tokenCache.Count > MaxTokenCacheBeforeCleanup)
                 {
-                    CleanupDeadReferences();
+                    CleanupDeadReferences("threshold reached");
                 }
 
                 return newToken;
@@ -393,7 +402,25 @@ public class BlobFileProvider : IFileProvider, IDisposable, IAsyncDisposable
         }
     }
 
-    private void CleanupDeadReferences()
+    private void PeriodicCleanup()
+    {
+        // Periodic cleanup to handle steady-state scenarios where threshold may never be reached
+        if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0)
+        {
+            return; // Skip cleanup if disposed
+        }
+
+        try
+        {
+            CleanupDeadReferences("periodic timer");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error during periodic cleanup of dead token references");
+        }
+    }
+
+    private void CleanupDeadReferences(string reason)
     {
         var keysToRemove = _tokenCache
             .Where(kvp => !kvp.Value.TryGetTarget(out _))
@@ -407,7 +434,8 @@ public class BlobFileProvider : IFileProvider, IDisposable, IAsyncDisposable
         
         if (keysToRemove.Count > 0)
         {
-            _logger.LogDebug("Cleaned up {Count} dead token references", keysToRemove.Count);
+            _logger.LogDebug("Cleaned up {Count} dead token references (trigger: {Reason})", 
+                keysToRemove.Count, reason);
         }
     }
 
@@ -433,6 +461,17 @@ public class BlobFileProvider : IFileProvider, IDisposable, IAsyncDisposable
         if (Interlocked.CompareExchange(ref _disposed, 1, 0) == 1)
         {
             return;
+        }
+
+        // Stop the periodic cleanup timer first
+        try
+        {
+            await _cleanupTimer.DisposeAsync();
+            _logger.LogDebug("Cleanup timer disposed");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error disposing cleanup timer");
         }
 
         // Cancel and dispose legacy change token to stop WatchBlobUpdate tasks
