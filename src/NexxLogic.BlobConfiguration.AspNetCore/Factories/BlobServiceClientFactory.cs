@@ -1,3 +1,4 @@
+using Azure.Core;
 using Azure.Identity;
 using Azure.Storage.Blobs;
 using Microsoft.Extensions.Logging;
@@ -6,7 +7,7 @@ using NexxLogic.BlobConfiguration.AspNetCore.Options;
 namespace NexxLogic.BlobConfiguration.AspNetCore.Factories;
 
 /// <summary>
-/// Factory for creating BlobServiceClient instances with proper authentication configuration.
+/// Factory for creating BlobServiceClient instances with flexible authentication configuration.
 /// 
 /// Error Handling Contract:
 /// - Configuration issues (missing credentials, invalid URLs, SAS tokens): Returns null (fallback to legacy mode)
@@ -17,27 +18,56 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.Factories;
 /// 2. Unexpected runtime failures are surfaced to the caller for proper handling
 /// 3. Callers who explicitly configured blob storage get clear feedback if something goes wrong
 /// 
-/// Authentication Requirements:
+/// Authentication Strategies:
+/// 
+/// The factory accepts a TokenCredential via dependency injection, allowing flexible authentication:
+/// 
+/// 1. DefaultAzureCredential (recommended for most scenarios):
+///    services.AddSingleton&lt;TokenCredential&gt;(_ => new DefaultAzureCredential());
+/// 
+/// 2. Managed Identity (for Azure-hosted applications):
+///    services.AddSingleton&lt;TokenCredential&gt;(_ => new ManagedIdentityCredential());
+/// 
+/// 3. Service Principal (for service-to-service authentication):
+///    services.AddSingleton&lt;TokenCredential&gt;(_ => new ClientSecretCredential(tenantId, clientId, clientSecret));
+/// 
+/// 4. Local Development (Visual Studio/VS Code):
+///    services.AddSingleton&lt;TokenCredential&gt;(_ => new VisualStudioCredential());
+/// 
+/// 5. Chained Credentials (multiple fallbacks):
+///    services.AddSingleton&lt;TokenCredential&gt;(_ => new ChainedTokenCredential(
+///        new ManagedIdentityCredential(),
+///        new AzureCliCredential(),
+///        new VisualStudioCredential()));
+/// 
+/// 6. Environment-specific (different per environment):
+///    services.AddSingleton&lt;TokenCredential&gt;(serviceProvider =>
+///    {
+///        var env = serviceProvider.GetRequiredService&lt;IHostEnvironment&gt;();
+///        return env.IsDevelopment() 
+///            ? new AzureCliCredential()
+///            : new ManagedIdentityCredential();
+///    });
+/// 
+/// Configuration Requirements:
 /// 
 /// 1. ConnectionString: Provides full authentication - enables enhanced features
 ///    Example: "DefaultEndpointsProtocol=https;AccountName=myaccount;AccountKey=..."
+///    Note: When ConnectionString is provided, TokenCredential is not used
 /// 
 /// 2. BlobContainerUrl with SAS token: Falls back to legacy mode (no enhanced features)
 ///    Example: "https://mystorageaccount.blob.core.windows.net/mycontainer?sv=2020-08-04&amp;ss=b..."
 ///    Rationale: SAS tokens provide container-level access, but enhanced features need storage account-level access
 /// 
-/// 3. BlobContainerUrl without SAS token: Uses DefaultAzureCredential, enables enhanced features
+/// 3. BlobContainerUrl without SAS token: Uses provided TokenCredential, enables enhanced features
 ///    Example: "https://mystorageaccount.blob.core.windows.net/mycontainer"
-///    Requires one of:
-///    - Managed Identity (recommended for Azure-hosted applications)
-///    - Azure CLI authentication: `az login` (for local development)
-///    - Environment variables: AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID
-///    - Visual Studio or VS Code authentication
-///    - WorkloadIdentity (for AKS with federated identity)
+///    Requires TokenCredential to be properly configured in DI
 /// 
 /// Runtime failures (network issues, permission problems) will throw exceptions for the caller to handle.
 /// </summary>
-public class BlobServiceClientFactory(ILogger<BlobServiceClientFactory> logger) : IBlobServiceClientFactory
+public class BlobServiceClientFactory(
+    ILogger<BlobServiceClientFactory> logger, 
+    TokenCredential? tokenCredential = null) : IBlobServiceClientFactory
 {
     public BlobServiceClient? CreateBlobServiceClient(BlobConfigurationOptions config)
     {
@@ -104,6 +134,12 @@ public class BlobServiceClientFactory(ILogger<BlobServiceClientFactory> logger) 
             {
                 return (false, "BlobContainerUrl contains SAS token - SAS tokens provide container-level access, but enhanced features need storage account-level access");
             }
+
+            // For BlobContainerUrl without SAS token, we need a TokenCredential
+            if (tokenCredential == null)
+            {
+                return (false, "BlobContainerUrl provided without SAS token, but no TokenCredential is configured. Register a TokenCredential in dependency injection.");
+            }
         }
 
         return (true, null);
@@ -129,25 +165,20 @@ public class BlobServiceClientFactory(ILogger<BlobServiceClientFactory> logger) 
 
     private BlobServiceClient CreateBlobServiceClientFromUri(Uri containerUri)
     {
-        // Create BlobServiceClient using DefaultAzureCredential for authentication
-        // Note: SAS token detection is now handled by BlobFileProvider for better test compatibility
-        return CreateBlobServiceClientWithDefaultAzureCredentials(containerUri);
+        // Use the injected TokenCredential for authentication
+        // This provides flexibility for different authentication strategies
+        return CreateBlobServiceClientWithCredential(containerUri, tokenCredential!);
     }
 
-    private BlobServiceClient CreateBlobServiceClientWithDefaultAzureCredentials(Uri containerUri)
+    private BlobServiceClient CreateBlobServiceClientWithCredential(Uri containerUri, TokenCredential credential)
     {
-        // This requires one of the following to be configured in the environment:
-        // - Managed Identity (recommended for Azure-hosted applications)
-        // - Azure CLI authentication (for local development)
-        // - Environment variables (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID)
-        // - Visual Studio or VS Code authentication
+        // Extract storage account service URI from the container URI
         var serviceUri = new Uri($"{containerUri.Scheme}://{containerUri.Host}");
-        var credential = new DefaultAzureCredential();
-
+        
         logger.LogInformation(
-            "Creating BlobServiceClient using DefaultAzureCredential. " +
-            "Ensure Azure credentials are configured " +
-            "(Managed Identity, Azure CLI, environment variables, or IDE authentication).");
+            "Creating BlobServiceClient using provided TokenCredential ({CredentialType}) for service URI: {ServiceUri}", 
+            credential.GetType().Name, 
+            serviceUri);
 
         return new BlobServiceClient(serviceUri, credential);
     }

@@ -2,18 +2,20 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
+using Azure.Identity;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.Factories;
 
 public class BlobServiceClientFactoryTests
 {
     private readonly ILogger<BlobServiceClientFactory> _logger = new NullLogger<BlobServiceClientFactory>();
+    private readonly DefaultAzureCredential _credential = new DefaultAzureCredential();
 
     [Fact]
     public void CreateBlobServiceClient_ShouldReturnClient_WhenValidConnectionStringProvided()
     {
         // Arrange
-        var factory = new BlobServiceClientFactory(_logger);
+        var factory = new BlobServiceClientFactory(_logger, _credential);
         var options = new BlobConfigurationOptions
         {
             ConnectionString = "DefaultEndpointsProtocol=https;AccountName=test;AccountKey=dGVzdA==;EndpointSuffix=core.windows.net"
@@ -30,7 +32,7 @@ public class BlobServiceClientFactoryTests
     public void CreateBlobServiceClient_ShouldReturnNull_WhenNoConnectionInfoProvided()
     {
         // Arrange
-        var factory = new BlobServiceClientFactory(_logger);
+        var factory = new BlobServiceClientFactory(_logger, _credential);
         var options = new BlobConfigurationOptions();
 
         // Act
@@ -44,7 +46,7 @@ public class BlobServiceClientFactoryTests
     public void CreateBlobServiceClient_ShouldAttemptDefaultCredentials_WhenBlobContainerUrlProvidedWithoutSas()
     {
         // Arrange
-        var factory = new BlobServiceClientFactory(_logger);
+        var factory = new BlobServiceClientFactory(_logger, _credential);
         var options = new BlobConfigurationOptions
         {
             BlobContainerUrl = "https://test.blob.core.windows.net/container"
@@ -70,7 +72,7 @@ public class BlobServiceClientFactoryTests
     public void CreateBlobServiceClient_ShouldReturnNull_ForSasTokenUrls()
     {
         // Arrange
-        var factory = new BlobServiceClientFactory(_logger);
+        var factory = new BlobServiceClientFactory(_logger, _credential);
         var options = new BlobConfigurationOptions
         {
             BlobContainerUrl = "https://test.blob.core.windows.net/container?sv=2020-08-04&ss=b&srt=c&sp=r&se=2023-12-31T23:59:59Z&st=2023-01-01T00:00:00Z&spr=https&sig=example"
@@ -87,7 +89,7 @@ public class BlobServiceClientFactoryTests
     public void CreateBlobServiceClient_ShouldReturnNull_ForInvalidUrls()
     {
         // Arrange
-        var factory = new BlobServiceClientFactory(_logger);
+        var factory = new BlobServiceClientFactory(_logger, _credential);
         var options = new BlobConfigurationOptions
         {
             BlobContainerUrl = "not-a-valid-url"
@@ -97,6 +99,23 @@ public class BlobServiceClientFactoryTests
         var result = factory.CreateBlobServiceClient(options);
 
         // Assert - Invalid URLs are configuration issues, should return null
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void CreateBlobServiceClient_ShouldReturnNull_WhenNoTokenCredentialProvided()
+    {
+        // Arrange - Factory without TokenCredential
+        var factory = new BlobServiceClientFactory(_logger, tokenCredential: null);
+        var options = new BlobConfigurationOptions
+        {
+            BlobContainerUrl = "https://test.blob.core.windows.net/container"
+        };
+
+        // Act
+        var result = factory.CreateBlobServiceClient(options);
+
+        // Assert - Should return null because no TokenCredential was provided
         Assert.Null(result);
     }
 }
