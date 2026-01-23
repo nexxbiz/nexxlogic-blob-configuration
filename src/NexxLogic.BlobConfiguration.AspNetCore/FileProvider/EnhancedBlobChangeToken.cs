@@ -73,15 +73,6 @@ internal class EnhancedBlobChangeToken : IChangeToken, IAsyncDisposable
         _cts = new CancellationTokenSource();
 
         _watchingTask = StartWatching();
-        
-        // Ensure unobserved task exceptions are logged
-        _watchingTask.ContinueWith(task =>
-        {
-            if (task is { IsFaulted: true, Exception: not null })
-            {
-                _logger.LogError(task.Exception, "Unobserved exception in watching task for blob {BlobPath}", _blobPath);
-            }
-        }, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
     }
 
     private Task StartWatching()
