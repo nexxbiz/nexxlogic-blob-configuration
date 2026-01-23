@@ -160,16 +160,20 @@ public class EnhancedBlobChangeTokenTests
     [Fact]
     public async Task EnhancedBlobChangeToken_ShouldRespectCancellation_DuringLongRunningOperation()
     {
-        // Arrange
-        using var cts = new CancellationTokenSource();
-        await using var token = CreateTokenWithStrategy(CreateSlowStrategy(), fastTiming: true);
+        // Arrange - Create token with slow strategy that responds to cancellation
+        var token = CreateTokenWithStrategy(CreateSlowStrategy(), fastTiming: true);
 
-        // Act - Let the token start its background operation, then cancel
-        await Task.Delay(50);
-        cts.Cancel();
-        await Task.Delay(100);
+        // Act - Let the token start its background operation, then dispose to trigger cancellation
+        await Task.Delay(100); // Give time for background operation to start
+        
+        // Dispose should cancel the ongoing operation gracefully
+        var startTime = DateTime.UtcNow;
+        await token.DisposeAsync();
+        var elapsedTime = DateTime.UtcNow - startTime;
 
-        // Assert - Token should handle cancellation gracefully
+        // Assert - Disposal should complete quickly (cancelled, not waited for completion)
+        Assert.True(elapsedTime < TimeSpan.FromSeconds(2), 
+            $"Disposal took too long ({elapsedTime.TotalMilliseconds}ms), suggesting cancellation didn't work");
         Assert.False(token.HasChanged);
     }
 
