@@ -7,7 +7,7 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.Factories;
 public class BlobClientFactoryTests
 {
     [Fact]
-    public void GetBlobClient()
+    public void GetBlobClient_ReturnsClientFromContainerFactory()
     {
         // Arrange
         const string blobName = "settings.json";
