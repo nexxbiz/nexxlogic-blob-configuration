@@ -88,44 +88,37 @@ internal class EnhancedBlobChangeToken : IChangeToken, IAsyncDisposable
     {
         return Task.Run(async () =>
         {
-            try
+            while (!_cts.Token.IsCancellationRequested)
             {
-                while (!_cts.Token.IsCancellationRequested)
+                try
                 {
+                    var hasContentChanged = await CheckForContentChanges();
+                    if (hasContentChanged)
+                    {
+                        TriggerDebouncedChange();
+                    }
+
+                    await Task.Delay(_watchingInterval, _cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected when cancellation is requested
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error while watching blob {BlobPath}", _blobPath);
+                    
                     try
                     {
-                        var hasContentChanged = await CheckForContentChanges();
-                        if (hasContentChanged)
-                        {
-                            TriggerDebouncedChange();
-                        }
-
-                        await Task.Delay(_watchingInterval, _cts.Token);
+                        await Task.Delay(_errorRetryDelay, _cts.Token);
                     }
                     catch (OperationCanceledException)
                     {
-                        // Expected when cancellation is requested
+                        // Expected when cancellation is requested during retry delay
                         break;
                     }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Error while watching blob {BlobPath}", _blobPath);
-                        
-                        try
-                        {
-                            await Task.Delay(_errorRetryDelay, _cts.Token);
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            // Expected when cancellation is requested during retry delay
-                            break;
-                        }
-                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Unhandled exception in blob watching task for {BlobPath}", _blobPath);
             }
         }, _cts.Token);
     }
