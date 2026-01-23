@@ -38,8 +38,12 @@ public class BlobClientFactoryTests
         // Act
         var result = sut.GetBlobClient(blobName);
 
-        // Assert
-        Assert.Equal(blobContainerName, result.BlobContainerName);
-        Assert.Equal(blobName, result.Name);
+        // Assert - Verify the factory makes the correct method calls in sequence
+        blobContainerFactory.Received(1).GetBlobContainerClient();
+        blobContainerClient.Received(1).GetBlobClient(blobName);
+        
+        // Verify the result is not null (the actual BlobClient instance from the mock)
+        Assert.NotNull(result);
+        Assert.Same(blobClient, result);
     }
 }
