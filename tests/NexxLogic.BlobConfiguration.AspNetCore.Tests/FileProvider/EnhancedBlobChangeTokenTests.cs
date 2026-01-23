@@ -185,11 +185,11 @@ public class EnhancedBlobChangeTokenTests
     [InlineData(1, 10, 5)] // 1s debounce, 10s watching, 5s error retry
     [InlineData(0, 1, 1)] // Minimum values (0 disables debouncing)
     [InlineData(30, 60, 120)] // Typical production values
-    public void EnhancedBlobChangeToken_ShouldAcceptTimingConfigurations_Successfully(
+    public async Task EnhancedBlobChangeToken_ShouldAcceptTimingConfigurations_Successfully(
         int debounceSeconds, int watchingSeconds, int errorRetrySeconds)
     {
         // Arrange & Act & Assert
-        AssertGracefulCreation(() => CreateTokenWithTiming(
+        await AssertGracefulCreation(() => CreateTokenWithTiming(
             TimeSpan.FromSeconds(debounceSeconds),
             TimeSpan.FromSeconds(watchingSeconds),
             TimeSpan.FromSeconds(errorRetrySeconds)));
