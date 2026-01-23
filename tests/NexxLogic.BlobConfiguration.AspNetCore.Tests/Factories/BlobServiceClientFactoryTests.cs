@@ -51,11 +51,52 @@ public class BlobServiceClientFactoryTests
         };
 
         // Act & Assert
-        // This will likely fail due to no actual credentials, but we're testing that it attempts to create
+        // With our new contract: configuration validation passes, so either succeeds or throws runtime exception
         var exception = Record.Exception(() => factory.CreateBlobServiceClient(options));
         
-        // Should either return a client or throw an exception, but not return null for non-SAS URLs
-        // The factory should attempt to create a client even if credentials aren't available
-        Assert.True(exception != null || true); // This test validates the attempt is made
+        if (exception != null)
+        {
+            // Should throw a runtime exception (credential issues), not return null for valid URLs
+            // Common exceptions: CredentialUnavailableException, AuthenticationFailedException
+            Assert.True(exception is Azure.Identity.CredentialUnavailableException || 
+                       exception is Azure.Identity.AuthenticationFailedException ||
+                       exception is InvalidOperationException, 
+                       $"Expected runtime exception, but got: {exception.GetType().Name}");
+        }
+        // If no exception, then credentials were available and client was created successfully
+    }
+
+    [Fact]
+    public void CreateBlobServiceClient_ShouldReturnNull_ForSasTokenUrls()
+    {
+        // Arrange
+        var factory = new BlobServiceClientFactory(_logger);
+        var options = new BlobConfigurationOptions
+        {
+            BlobContainerUrl = "https://test.blob.core.windows.net/container?sv=2020-08-04&ss=b&srt=c&sp=r&se=2023-12-31T23:59:59Z&st=2023-01-01T00:00:00Z&spr=https&sig=example"
+        };
+
+        // Act
+        var result = factory.CreateBlobServiceClient(options);
+
+        // Assert - SAS tokens are configuration issues, should return null
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void CreateBlobServiceClient_ShouldReturnNull_ForInvalidUrls()
+    {
+        // Arrange
+        var factory = new BlobServiceClientFactory(_logger);
+        var options = new BlobConfigurationOptions
+        {
+            BlobContainerUrl = "not-a-valid-url"
+        };
+
+        // Act
+        var result = factory.CreateBlobServiceClient(options);
+
+        // Assert - Invalid URLs are configuration issues, should return null
+        Assert.Null(result);
     }
 }
