@@ -65,7 +65,7 @@ public class BlobFileProviderTests
     public async Task Watch_ShouldRaiseChange_WhenNewVersionIsAvailable()
     {
         // Arrange
-        var tcs = new TaskCompletionSource<bool>();
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var options = new BlobConfigurationOptions
         {
             ReloadInterval = 1000
