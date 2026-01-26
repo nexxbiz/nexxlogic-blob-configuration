@@ -65,6 +65,7 @@ public class BlobFileProviderTests
     public async Task Watch_ShouldRaiseChange_WhenNewVersionIsAvailable()
     {
         // Arrange
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var options = new BlobConfigurationOptions
         {
             ReloadInterval = 1000
@@ -78,14 +79,17 @@ public class BlobFileProviderTests
         );
 
         var changeToken = (BlobChangeToken)sut.Watch(BlobName);
+        changeToken.RegisterChangeCallback(_ => tcs.TrySetResult(true), null);
+
         blobClientMock
             .GetPropertiesAsync(null, changeToken.CancellationToken)
             .Returns(Response.FromValue(blobProperties, Substitute.For<Response>()));
 
         // Act
-        await Task.Delay(options.ReloadInterval * 2);
+        var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(5)));
 
         // Assert
+        Assert.Same(tcs.Task, completedTask);
         Assert.True(changeToken.HasChanged);
     }
 
