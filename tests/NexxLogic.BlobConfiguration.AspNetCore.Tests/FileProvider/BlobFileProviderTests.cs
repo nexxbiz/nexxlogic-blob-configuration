@@ -86,9 +86,10 @@ public class BlobFileProviderTests
             .Returns(Response.FromValue(blobProperties, Substitute.For<Response>()));
 
         // Act
-        await tcs.Task;
+        var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(5)));
 
         // Assert
+        Assert.Same(tcs.Task, completedTask);
         Assert.True(changeToken.HasChanged);
     }
 
