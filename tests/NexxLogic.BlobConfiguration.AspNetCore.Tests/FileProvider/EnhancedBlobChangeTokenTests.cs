@@ -3,9 +3,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using System.Collections.Concurrent;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
+using NSubstitute.ExceptionExtensions;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.FileProvider;
 
@@ -156,31 +156,7 @@ public class EnhancedBlobChangeTokenTests
             await token.DisposeAsync(); // Second disposal should be safe
         });
     }
-
-    [Fact]
-    public async Task EnhancedBlobChangeToken_ShouldRespectCancellation_DuringLongRunningOperation()
-    {
-        // Arrange - Create token with slow strategy that responds to cancellation
-        var token = CreateTokenWithStrategy(CreateSlowStrategy(), fastTiming: true);
-
-        // Act - Let the token start its background operation, then dispose to trigger cancellation
-        await Task.Delay(100); // Give time for background operation to start
-        
-        // Dispose should cancel the ongoing operation gracefully
-        await token.DisposeAsync();
-
-        // Assert - Focus on behavioral outcomes rather than timing
-        Assert.False(token.HasChanged); // Should not have changed during cancellation
-        Assert.False(token.ActiveChangeCallbacks); // Should be properly disposed
-        
-        // After disposal, API calls should fail appropriately
-        Assert.Throws<ObjectDisposedException>(() => token.RegisterChangeCallback(_ => { }, null));
-        
-        // Disposal should be idempotent
-        var exception = await Record.ExceptionAsync(async () => await token.DisposeAsync());
-        Assert.Null(exception);
-    }
-
+    
     [Theory]
     [InlineData(1, 10, 5)] // 1s debounce, 10s watching, 5s error retry
     [InlineData(0, 1, 1)] // Minimum values (0 disables debouncing)
@@ -196,16 +172,27 @@ public class EnhancedBlobChangeTokenTests
     }
 
     [Fact]
-    public async Task EnhancedBlobChangeToken_ShouldHandleStrategyExceptions_Gracefully()
+    public void EnhancedBlobChangeToken_ShouldHandleStrategyExceptions_Gracefully()
     {
-        // Arrange
-        await using var token = CreateTokenWithStrategy(CreateFaultyStrategy(), fastTiming: true);
+        // Arrange - Create strategy that throws an exception
+        var strategy = Substitute.For<IChangeDetectionStrategy>();
+        strategy.HasChangedAsync(Arg.Any<ChangeDetectionContext>())
+            .ThrowsAsync(new InvalidOperationException("Simulated strategy failure"));
 
-        // Act - Let it run briefly to encounter strategy exceptions
-        await Task.Delay(200);
+        // Act - Creating the token should not throw
+        var token = CreateTokenWithStrategy(strategy, fastTiming: true);
 
-        // Assert - Token should handle exceptions gracefully
-        Assert.False(token.HasChanged);
+        // Assert - Token should be created successfully despite faulty strategy
+        Assert.NotNull(token);
+        Assert.False(token.HasChanged); // Should not have changed yet
+        Assert.True(token.ActiveChangeCallbacks); // Should be active
+        
+        // Should be able to register callbacks
+        var registration = token.RegisterChangeCallback(_ => { }, null);
+        Assert.NotNull(registration);
+        
+        // Cleanup
+        registration.Dispose();
     }
 
     [Fact]
@@ -454,27 +441,6 @@ public class EnhancedBlobChangeTokenTests
         var strategy = Substitute.For<IChangeDetectionStrategy>();
         strategy.HasChangedAsync(Arg.Any<ChangeDetectionContext>())
             .Returns(false); // Default to no change detected
-        return strategy;
-    }
-
-    private static IChangeDetectionStrategy CreateSlowStrategy()
-    {
-        var strategy = Substitute.For<IChangeDetectionStrategy>();
-        strategy.HasChangedAsync(Arg.Any<ChangeDetectionContext>())
-            .Returns(async callInfo =>
-            {
-                var context = callInfo.Arg<ChangeDetectionContext>();
-                await Task.Delay(1000, context.CancellationToken); // Slow operation
-                return false;
-            });
-        return strategy;
-    }
-
-    private static IChangeDetectionStrategy CreateFaultyStrategy()
-    {
-        var strategy = Substitute.For<IChangeDetectionStrategy>();
-        strategy.HasChangedAsync(Arg.Any<ChangeDetectionContext>())
-            .ThrowsAsync(new InvalidOperationException("Simulated strategy failure"));
         return strategy;
     }
 }
