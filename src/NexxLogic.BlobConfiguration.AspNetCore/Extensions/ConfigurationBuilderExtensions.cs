@@ -12,16 +12,6 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.Extensions;
 public static class ConfigurationBuilderExtensions
 {
     /// <summary>
-    /// Adds JSON blob configuration with DefaultAzureCredential (for backward compatibility).
-    /// </summary>
-    public static IConfigurationBuilder AddJsonBlob(this IConfigurationBuilder builder, 
-        Action<BlobConfigurationOptions> configure,
-        ILogger<BlobFileProvider> logger)
-    {
-        return builder.AddJsonBlob(configure, logger, new DefaultAzureCredential());
-    }
-    
-    /// <summary>
     /// Adds JSON blob configuration with a specific TokenCredential.
     /// </summary>
     public static IConfigurationBuilder AddJsonBlob(this IConfigurationBuilder builder, 
@@ -132,13 +122,13 @@ public static class ConfigurationBuilderExtensions
             var credentials = new List<TokenCredential>();
             foreach (var credType in credentialChain)
             {
-                credentials.Add(credType.ToLowerInvariant() switch
+                credentials.Add((credType?.ToLowerInvariant()) switch
                 {
                     "managedidentity" => new ManagedIdentityCredential(),
                     "azurecli" => new AzureCliCredential(),
                     "visualstudio" => new VisualStudioCredential(),
                     "visualstudiocode" => new VisualStudioCodeCredential(),
-                    _ => throw new InvalidOperationException("Unsupported credential type: " + credType)
+                    _ => throw new InvalidOperationException($"Unsupported credential type: {credType ?? "null"}")
                 });
             }
             return new ChainedTokenCredential(credentials.ToArray());

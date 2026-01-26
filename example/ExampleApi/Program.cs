@@ -14,7 +14,7 @@ var loggerFactory = LoggerFactory.Create(loggerBuilder =>
 
 var logger = loggerFactory.CreateLogger<BlobFileProvider>();
 
-builder.Configuration.AddJsonBlob(config =>
+builder.Configuration.AddJsonBlobWithEnvironmentCredentials(config =>
 {
     builder.Configuration.GetSection("BlobConfiguration").Bind(config);
     config.BlobName = "settings.json";
@@ -28,7 +28,7 @@ builder.Configuration.AddJsonBlob(config =>
     config.ErrorRetryDelay = TimeSpan.FromSeconds(30); // Retry after 30 seconds on error
 }, logger);
 
-builder.Configuration.AddJsonBlob(config =>
+builder.Configuration.AddJsonBlobWithEnvironmentCredentials(config =>
 {
     builder.Configuration.GetSection("BlobConfiguration").Bind(config);
     config.BlobName = "Folder/settings.json";

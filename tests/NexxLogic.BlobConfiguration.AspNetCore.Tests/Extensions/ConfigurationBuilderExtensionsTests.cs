@@ -1,10 +1,12 @@
 ﻿using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Configuration.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NexxLogic.BlobConfiguration.AspNetCore.Extensions;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 using NSubstitute;
+using Azure.Identity;
+using Microsoft.Extensions.Configuration.Json;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.Extensions;
 
@@ -19,7 +21,8 @@ public class BlobConfigurationBuilderExtensionsTests
         var logger = loggerFactory.CreateLogger<BlobFileProvider>();
 
         // Act & Assert
-        var exception = Assert.Throws<ArgumentException>(() => configurationBuilderMock.AddJsonBlob(config => { }, logger));
+        var exception = Assert.Throws<ArgumentException>(() => 
+            configurationBuilderMock.AddJsonBlob(config => { }, logger, new DefaultAzureCredential()));
         Assert.Contains("Invalid BlobConfiguration values:", exception.Message);
         configurationBuilderMock
             .DidNotReceive()
@@ -42,7 +45,8 @@ public class BlobConfigurationBuilderExtensionsTests
             config.ContainerName = "CONTAINER_NAME";
             config.BlobName = "BLOB_NAME";
         }, 
-        logger);
+        logger,
+        new DefaultAzureCredential());
 
         // Assert
         var calls = configurationBuilderMock.ReceivedCalls();
