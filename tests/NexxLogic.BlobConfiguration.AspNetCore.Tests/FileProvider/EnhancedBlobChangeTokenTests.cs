@@ -123,7 +123,7 @@ public class EnhancedBlobChangeTokenTests
     [Theory]
     [InlineData(true)] // With registrations
     [InlineData(false)] // Without registrations
-    public void EnhancedBlobChangeToken_ShouldDisposeGracefully_WithoutExceptions(bool withRegistrations)
+    public async Task EnhancedBlobChangeToken_ShouldDisposeGracefully_WithoutExceptions(bool withRegistrations)
     {
         // Arrange
         var token = CreateDefaultToken();
@@ -136,7 +136,7 @@ public class EnhancedBlobChangeTokenTests
         }
 
         // Act + Assert
-        AssertGracefulDisposal(async () =>
+        await AssertGracefulDisposalAsync(async () =>
         {
             CleanupRegistrations(registrations);
             await token.DisposeAsync();
@@ -144,13 +144,13 @@ public class EnhancedBlobChangeTokenTests
     }
 
     [Fact]
-    public void EnhancedBlobChangeToken_ShouldHandleDoubleDisposal_Gracefully()
+    public async Task EnhancedBlobChangeToken_ShouldHandleDoubleDisposal_Gracefully()
     {
         // Arrange
         var token = CreateDefaultToken();
 
         // Act & Assert
-        AssertGracefulDisposal(async () =>
+        await AssertGracefulDisposalAsync(async () =>
         {
             await token.DisposeAsync();
             await token.DisposeAsync(); // Second disposal should be safe
@@ -241,15 +241,15 @@ public class EnhancedBlobChangeTokenTests
     }
 
     [Fact]
-    public void EnhancedBlobChangeToken_ShouldSupportBothSyncAndAsyncDisposal()
+    public async Task EnhancedBlobChangeToken_ShouldSupportBothSyncAndAsyncDisposal()
     {
         // Arrange
         var token1 = CreateDefaultToken();
         var token2 = CreateDefaultToken();
 
         // Act & Assert - Both disposal patterns should work
-        AssertGracefulDisposal(async void () => await token1.DisposeAsync());
-        AssertGracefulDisposal(async () => await token2.DisposeAsync());
+        await AssertGracefulDisposalAsync(async () => await token1.DisposeAsync());
+        await AssertGracefulDisposalAsync(async () => await token2.DisposeAsync());
     }
 
     [Theory]
@@ -405,6 +405,12 @@ public class EnhancedBlobChangeTokenTests
     private static void AssertGracefulDisposal(Action disposeAction)
     {
         var exception = Record.Exception(disposeAction);
+        Assert.Null(exception);
+    }
+
+    private static async Task AssertGracefulDisposalAsync(Func<Task> disposeAction)
+    {
+        var exception = await Record.ExceptionAsync(disposeAction);
         Assert.Null(exception);
     }
 
