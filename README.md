@@ -12,8 +12,8 @@ All timing and size configuration values are validated using .NET DataAnnotation
 - **ErrorRetryDelay**: 1s-2h (TimeSpan) - allows quick retries
 - **MaxFileContentHashSizeMb**: 1-1024 MB
 
-### Single Source of Truth
-Validation logic is centralized in `[Range]` attributes on the `BlobConfigurationOptions` properties and automatically enforced at runtime using `Validator.TryValidateObject()`.
+### Validation Sources
+The primary validation ranges are expressed via `[Range]` attributes on the `BlobConfigurationOptions` properties and enforced at startup using `Validator.TryValidateObject()`. In addition, `BlobFileProvider.ValidateConfiguration` performs extra runtime guard checks (for example, on `TimeSpan` values) and may emit its own, more specific error messages when an invalid configuration slips through.
 
 ### Example Validation Error
 ```csharp
