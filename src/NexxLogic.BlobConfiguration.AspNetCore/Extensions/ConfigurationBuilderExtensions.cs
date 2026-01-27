@@ -17,7 +17,7 @@ public static class ConfigurationBuilderExtensions
     public static IConfigurationBuilder AddJsonBlob(this IConfigurationBuilder builder, 
         Action<BlobConfigurationOptions> configure,
         ILogger<BlobFileProvider> logger,
-        TokenCredential credential)
+        TokenCredential? credential = null)
     {
         var options = new BlobConfigurationOptions();
         configure(options);
