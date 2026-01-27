@@ -2,14 +2,15 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
-using Azure.Identity;
+using Azure.Core;
+using NSubstitute;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.Factories;
 
 public class BlobServiceClientFactoryTests
 {
     private readonly ILogger<BlobServiceClientFactory> _logger = new NullLogger<BlobServiceClientFactory>();
-    private readonly DefaultAzureCredential _credential = new DefaultAzureCredential();
+    private readonly TokenCredential _credential = Substitute.For<TokenCredential>();
 
     [Fact]
     public void CreateBlobServiceClient_ShouldReturnClient_WhenValidConnectionStringProvided()

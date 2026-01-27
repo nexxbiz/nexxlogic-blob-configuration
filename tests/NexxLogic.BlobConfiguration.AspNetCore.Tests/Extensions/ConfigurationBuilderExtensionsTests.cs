@@ -1,10 +1,9 @@
 ﻿using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NexxLogic.BlobConfiguration.AspNetCore.Extensions;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 using NSubstitute;
-using Azure.Identity;
+using Azure.Core;
 using Microsoft.Extensions.Configuration.Json;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.Extensions;
@@ -16,16 +15,16 @@ public class BlobConfigurationBuilderExtensionsTests
     {
         // Arrange
         var configurationBuilderMock = Substitute.For<IConfigurationBuilder>();
-        var loggerFactory = new NullLoggerFactory();
-        var logger = loggerFactory.CreateLogger<BlobFileProvider>();
+        var logger = NullLogger<BlobFileProvider>.Instance;
+        var mockCredential = Substitute.For<TokenCredential>();
 
         // Act & Assert
         var exception = Assert.Throws<ArgumentException>(() => 
-            configurationBuilderMock.AddJsonBlob(config => { }, logger, new DefaultAzureCredential()));
+            configurationBuilderMock.AddJsonBlob(config => { }, logger, mockCredential));
         Assert.Contains("Invalid BlobConfiguration values:", exception.Message);
         configurationBuilderMock
-            .DidNotReceive()
-            .Add(Substitute.For<IConfigurationSource>());
+            .DidNotReceiveWithAnyArgs()
+            .Add(null!);
     }
 
     [Fact]
@@ -33,9 +32,8 @@ public class BlobConfigurationBuilderExtensionsTests
     {
         // Arrange
         var configurationBuilderMock = Substitute.For<IConfigurationBuilder>();
-
-        var loggerFactory = new NullLoggerFactory();
-        var logger = loggerFactory.CreateLogger<BlobFileProvider>();
+        var logger = NullLogger<BlobFileProvider>.Instance;
+        var mockCredential = Substitute.For<TokenCredential>();
 
         // Act
         configurationBuilderMock.AddJsonBlob(config =>
@@ -45,18 +43,10 @@ public class BlobConfigurationBuilderExtensionsTests
             config.BlobName = "BLOB_NAME";
         }, 
         logger,
-        new DefaultAzureCredential());
+        mockCredential);
 
         // Assert
-        var calls = configurationBuilderMock.ReceivedCalls();
-
-        var addCall = calls.Single(x =>
-        {
-            var methodInfo = x.GetMethodInfo();
-            return methodInfo.Name == nameof(IConfigurationBuilder.Add);
-        });
-        var arguments = addCall.GetArguments();
-        var argument = arguments.Single();
-        Assert.Equal(typeof(JsonConfigurationSource), argument?.GetType());
+        configurationBuilderMock.Received(1)
+            .Add(Arg.Is<IConfigurationSource>(s => s is JsonConfigurationSource));
     }
 }
