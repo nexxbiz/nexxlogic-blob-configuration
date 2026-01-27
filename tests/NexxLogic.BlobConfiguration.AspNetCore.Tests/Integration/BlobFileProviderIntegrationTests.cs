@@ -7,6 +7,7 @@ using Microsoft.Extensions.Primitives;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
+using NexxLogic.BlobConfiguration.AspNetCore.Utilities;
 using NSubstitute;
 using System.Collections.Concurrent;
 using NSubstitute.ExceptionExtensions;
@@ -330,7 +331,7 @@ public class BlobFileProviderIntegrationTests
         
         // Configure mock based on whether we want enhanced or legacy mode
         if (!string.IsNullOrEmpty(options.ConnectionString) || 
-            (!string.IsNullOrEmpty(options.BlobContainerUrl) && !options.BlobContainerUrl.Contains("?")))
+            (!string.IsNullOrEmpty(options.BlobContainerUrl) && !SasTokenDetector.HasSasToken(options.BlobContainerUrl)))
         {
             // Enhanced mode - return mock BlobServiceClient
             var mockBlobServiceClient = Substitute.For<BlobServiceClient>();
@@ -397,7 +398,7 @@ public class BlobFileProviderIntegrationTests
         
         // Configure mock based on whether we want enhanced or legacy mode
         if (!string.IsNullOrEmpty(options.ConnectionString) || 
-            (!string.IsNullOrEmpty(options.BlobContainerUrl) && !options.BlobContainerUrl.Contains("?")))
+            (!string.IsNullOrEmpty(options.BlobContainerUrl) && !SasTokenDetector.HasSasToken(options.BlobContainerUrl)))
         {
             // Enhanced mode - return mock BlobServiceClient
             var mockBlobServiceClient = Substitute.For<BlobServiceClient>();

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
+using NexxLogic.BlobConfiguration.AspNetCore.Utilities;
 using System.Collections.Concurrent;
 using System.ComponentModel.DataAnnotations;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStrategies;
@@ -101,8 +102,8 @@ public class BlobFileProvider : IFileProvider, IDisposable, IAsyncDisposable
         // Use the factory to create BlobServiceClient with exception handling
         try
         {
-            // Check for SAS token before calling factory to maintain test compatibility
-            if (!string.IsNullOrEmpty(_blobConfig.BlobContainerUrl) && _blobConfig.BlobContainerUrl.Contains("?"))
+            // Check for actual SAS token before calling factory to maintain test compatibility
+            if (!string.IsNullOrEmpty(_blobConfig.BlobContainerUrl) && SasTokenDetector.HasSasToken(_blobConfig.BlobContainerUrl))
             {
                 _logger.LogInformation(
                     "BlobContainerUrl contains a SAS token; " +

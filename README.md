@@ -87,25 +87,29 @@ builder.Configuration.AddJsonBlob(config =>
 }, logger, new DefaultAzureCredential()); // Credential still required for API consistency
 ```
 
-#### 5. **Container URLs (Enhanced & Legacy Mode - Automatic Authentication)**
+#### 5. **Container URLs (Enhanced & Legacy Mode - Intelligent Authentication)**
 
 ```csharp
 builder.Configuration.AddJsonBlob(config => 
 {
     // Container URL WITH SAS token - uses anonymous access (Legacy Mode)
-    config.BlobContainerUrl = "https://mystorageaccount.blob.core.windows.net/config?sv=2021-06-08&se=...";
+    config.BlobContainerUrl = "https://mystorageaccount.blob.core.windows.net/config?sv=2021-06-08&sig=ABC123&se=...";
     config.BlobName = "appsettings.json";
     
-    // OR Container URL WITHOUT SAS token - uses TokenCredential (Enhanced Mode)
+    // Container URL WITHOUT SAS token - uses TokenCredential (Enhanced Mode)
     config.BlobContainerUrl = "https://mystorageaccount.blob.core.windows.net/config";
     config.BlobName = "appsettings.json";
     
+    // Container URL with non-SAS query params - uses TokenCredential (Enhanced Mode) 
+    config.BlobContainerUrl = "https://mystorageaccount.blob.core.windows.net/config?timeout=30&api-version=2021-06-08";
+    config.BlobName = "appsettings.json";
+    
     // OR blob-level SAS - uses anonymous access (Legacy Mode)
-    config.BlobUrl = "https://mystorageaccount.blob.core.windows.net/config/appsettings.json?sv=2021-06-08&se=...";
+    config.BlobUrl = "https://mystorageaccount.blob.core.windows.net/config/appsettings.json?sv=2021-06-08&sig=ABC123&se=...";
 }, logger, new DefaultAzureCredential());
 ```
 
-**Note**: When `BlobContainerUrl` is provided without a SAS token, the system automatically uses the provided `TokenCredential` for authentication, enabling access to private containers without explicit SAS tokens.
+**Intelligent SAS Detection**: The system performs proper SAS token detection by checking for required SAS parameters (`sv` and `sig`) rather than just the presence of query parameters. This means URLs with non-SAS query parameters (like `timeout` or `api-version`) will correctly use TokenCredential authentication instead of being incorrectly treated as SAS URLs.
 
 ### Authentication Flow
 

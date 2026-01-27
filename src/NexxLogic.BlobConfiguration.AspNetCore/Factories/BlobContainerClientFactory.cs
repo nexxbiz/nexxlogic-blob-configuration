@@ -1,5 +1,6 @@
 ﻿using Azure.Storage.Blobs;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
+using NexxLogic.BlobConfiguration.AspNetCore.Utilities;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Factories;
 
@@ -13,8 +14,8 @@ public class BlobContainerClientFactory(
         {
             var containerUri = new Uri(blobConfig.BlobContainerUrl);
             
-            // Check if URL contains SAS token (query string)
-            if (!string.IsNullOrEmpty(containerUri.Query))
+            // Check if URL contains actual SAS token (not just any query parameters)
+            if (SasTokenDetector.HasSasToken(containerUri))
             {
                 // URL has SAS token - use anonymous access
                 return new BlobContainerClient(containerUri);
