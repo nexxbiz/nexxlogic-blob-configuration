@@ -87,19 +87,25 @@ builder.Configuration.AddJsonBlob(config =>
 }, logger, new DefaultAzureCredential()); // Credential still required for API consistency
 ```
 
-#### 5. **SAS URLs (Legacy Mode - Automatic Fallback)**
+#### 5. **Container URLs (Enhanced & Legacy Mode - Automatic Authentication)**
 
 ```csharp
 builder.Configuration.AddJsonBlob(config => 
 {
-    // Container-level SAS
+    // Container URL WITH SAS token - uses anonymous access (Legacy Mode)
     config.BlobContainerUrl = "https://mystorageaccount.blob.core.windows.net/config?sv=2021-06-08&se=...";
     config.BlobName = "appsettings.json";
     
-    // OR blob-level SAS
+    // OR Container URL WITHOUT SAS token - uses TokenCredential (Enhanced Mode)
+    config.BlobContainerUrl = "https://mystorageaccount.blob.core.windows.net/config";
+    config.BlobName = "appsettings.json";
+    
+    // OR blob-level SAS - uses anonymous access (Legacy Mode)
     config.BlobUrl = "https://mystorageaccount.blob.core.windows.net/config/appsettings.json?sv=2021-06-08&se=...";
 }, logger, new DefaultAzureCredential());
 ```
+
+**Note**: When `BlobContainerUrl` is provided without a SAS token, the system automatically uses the provided `TokenCredential` for authentication, enabling access to private containers without explicit SAS tokens.
 
 ### Authentication Flow
 
@@ -122,8 +128,8 @@ graph TD
 
 | **Mode** | **Features** | **Authentication** | **Performance** |
 |----------|--------------|-------------------|-----------------|
-| **Enhanced** | Content-based change detection, debouncing, advanced caching | TokenCredential, Connection String | Optimized polling, intelligent strategies |
-| **Legacy** | Basic ETag-based detection | SAS URLs only | Simple polling, basic caching |
+| **Enhanced** | Content-based change detection, debouncing, advanced caching | TokenCredential, Connection String, Container URLs without SAS | Optimized polling, intelligent strategies |
+| **Legacy** | Basic ETag-based detection | SAS URLs only (Container URLs with SAS, Blob URLs with SAS) | Simple polling, basic caching |
 
 ### Security Best Practices
 

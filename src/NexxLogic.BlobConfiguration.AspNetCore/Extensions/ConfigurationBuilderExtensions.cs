@@ -23,10 +23,10 @@ public static class ConfigurationBuilderExtensions
         configure(options);
         RequiredBlobNameBlobConfigurationOptionsValidator.ValidateAndThrow(options);
         
-        var blobContainerClientFactory = new BlobContainerClientFactory(options);
-        var blobClientFactory = new BlobClientFactory(blobContainerClientFactory);
         var blobServiceClientLogger = new NullLogger<BlobServiceClientFactory>();
         var blobServiceClientFactory = new BlobServiceClientFactory(blobServiceClientLogger, credential);
+        var blobContainerClientFactory = new BlobContainerClientFactory(options, blobServiceClientFactory);
+        var blobClientFactory = new BlobClientFactory(blobContainerClientFactory);
 
         return builder.AddJsonFile(source =>
         {
