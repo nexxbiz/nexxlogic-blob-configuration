@@ -164,7 +164,9 @@ public class BlobFileProviderTests
             ReloadInterval = 1000,
             Optional = true
         };
-        var sut = CreateSut(out var blobClientMock, options);
+        await using var sut = CreateSut(out var blobClientMock, options);
+        var callCount = 0;
+        var multipleCallsSignal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         blobClientMock
             .GetProperties()
@@ -174,11 +176,28 @@ public class BlobFileProviderTests
                 BlobErrorCode.BlobNotFound.ToString(),
                 null
             ));
+
+        // Set up Exists to signal when called multiple times
+        blobClientMock
+            .Exists(Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                var currentCount = Interlocked.Increment(ref callCount);
+                if (currentCount >= 2)
+                {
+                    multipleCallsSignal.TrySetResult(true);
+                }
+                return Response.FromValue(false, Substitute.For<Response>());
+            });
+
         sut.GetFileInfo(BlobName);
 
         // Act
         _ = (BlobChangeToken)sut.Watch(BlobName);
-        await Task.Delay(3000);
+        
+        // Wait for the signal with a generous timeout for CI environments
+        var completedTask = await Task.WhenAny(multipleCallsSignal.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        Assert.Same(multipleCallsSignal.Task, completedTask);
 
         // Assert
         var existCalls = blobClientMock.ReceivedCalls()
@@ -196,7 +215,10 @@ public class BlobFileProviderTests
             ReloadInterval = 1000,
             Optional = true
         };
-        var sut = CreateSut(out var blobClientMock, options);
+        await using var sut = CreateSut(out var blobClientMock, options);
+        var firstExistsCallSignal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var changeTokenChangedSignal = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var existsCallCount = 0;
 
         blobClientMock
             .GetProperties()
@@ -206,22 +228,43 @@ public class BlobFileProviderTests
                 BlobErrorCode.BlobNotFound.ToString(),
                 null
             ));
+
+        // Set up Exists to return false initially, then true after first call
+        blobClientMock
+            .Exists(Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                var currentCount = Interlocked.Increment(ref existsCallCount);
+                
+                // Signal that the first Exists call has happened
+                if (currentCount == 1)
+                {
+                    firstExistsCallSignal.TrySetResult(true);
+                }
+                
+                // Return true from the second call onwards to simulate blob appearing
+                var blobExists = currentCount > 1;
+                return Response.FromValue(blobExists, Substitute.For<Response>());
+            });
+
         sut.GetFileInfo(BlobName);
         
         var changeToken = (BlobChangeToken)sut.Watch(BlobName);
-        await Task.Delay(1000);
 
-        // Pre-Assert
-        blobClientMock
-            .Received()
-            .Exists(changeToken.CancellationToken);
+        // Register a callback to signal when change token changes
+        changeToken.RegisterChangeCallback(_ => changeTokenChangedSignal.TrySetResult(true), null);
+
+        // Wait for the first Exists call
+        var firstCallTask = await Task.WhenAny(firstExistsCallSignal.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        Assert.Same(firstExistsCallSignal.Task, firstCallTask);
+
+        // Pre-Assert - should have been called and not changed yet
+        blobClientMock.Received().Exists(changeToken.CancellationToken);
         Assert.False(changeToken.HasChanged);
 
-        // Act
-        blobClientMock            
-            .Exists(changeToken.CancellationToken)
-            .Returns(Response.FromValue(true, Substitute.For<Response>()));
-        await Task.Delay(2000); // making sure that exists method returns with a TRUE value
+        // Act - Wait for the change token to be triggered (blob appears)
+        var changeTask = await Task.WhenAny(changeTokenChangedSignal.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        Assert.Same(changeTokenChangedSignal.Task, changeTask);
 
         // Assert
         Assert.True(changeToken.HasChanged);

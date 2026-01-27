@@ -10,7 +10,7 @@ The BlobConfigurationProvider supports multiple authentication methods through a
 | **Factory Type** | **Handles** | **Authentication Method** | **Used For** |
 |------------------|-------------|---------------------------|--------------|
 | **`BlobServiceClientFactory`** | Connection strings, TokenCredential | Built-in auth, OAuth/Managed Identity | **Enhanced Mode** (advanced features) |
-| **`BlobContainerClientFactory`** | Container URLs with SAS tokens | SAS embedded in URL | **Legacy Mode** (SAS-based) |
+| **`BlobContainerClientFactory`** | Container URLs with/without SAS | SAS embedded in URL OR TokenCredential via BlobServiceClient | **Enhanced Mode** (no SAS) / **Legacy Mode** (with SAS) |
 | **`BlobClientFactory`** | Individual blob URLs with SAS | SAS embedded in URL | **Legacy Mode** (direct blob access) |
 
 ### Authentication Methods
@@ -31,7 +31,9 @@ builder.Configuration.AddJsonBlob(config =>
 // Or with specific credentials
 builder.Configuration.AddJsonBlob(config => 
 {
-    // ...configuration...
+    config.AccountName = "mystorageaccount";
+    config.ContainerName = "configuration";
+    config.BlobName = "appsettings.json";
 }, logger, new ManagedIdentityCredential());
 ```
 
@@ -79,6 +81,8 @@ builder.Configuration.AddJsonBlobWithConfiguredCredentials(config =>
 #### 4. **Connection String (Enhanced Mode)**
 
 ```csharp
+using Azure.Identity;
+
 builder.Configuration.AddJsonBlob(config => 
 {
     config.ConnectionString = "DefaultEndpointsProtocol=https;AccountName=mystorageaccount;AccountKey=...";
@@ -90,6 +94,8 @@ builder.Configuration.AddJsonBlob(config =>
 #### 5. **Container URLs (Enhanced & Legacy Mode - Intelligent Authentication)**
 
 ```csharp
+using Azure.Identity;
+
 builder.Configuration.AddJsonBlob(config => 
 {
     // Container URL WITH SAS token - uses anonymous access (Legacy Mode)
@@ -234,13 +240,15 @@ The primary validation ranges are expressed via `[Range]` attributes on the `Blo
 
 ### Example Validation Error
 ```csharp
+using Azure.Identity;
+
 // ❌ This will throw ArgumentException with clear error messages
 builder.Configuration.AddJsonBlob(config => 
 {
     config.DebounceDelay = TimeSpan.FromSeconds(-5);        // Invalid: negative value
     config.WatchingInterval = TimeSpan.Zero;                // Invalid: must be >= 1s  
     config.ErrorRetryDelay = TimeSpan.FromHours(3);         // Invalid: too large (>2h)
-}, logger);
+}, logger, new DefaultAzureCredential());
 
 // Error: "Invalid BlobConfiguration values:
 // DebounceDelay must be between 0 seconds and 1 hour. Use 0 to disable debouncing.
@@ -250,6 +258,8 @@ builder.Configuration.AddJsonBlob(config =>
 
 ### Valid Configuration Examples
 ```csharp
+using Azure.Identity;
+
 // ✅ Production configuration
 builder.Configuration.AddJsonBlob(config => 
 {
@@ -257,7 +267,7 @@ builder.Configuration.AddJsonBlob(config =>
     config.WatchingInterval = TimeSpan.FromSeconds(60);     // Balanced polling  
     config.ErrorRetryDelay = TimeSpan.FromSeconds(120);     // Conservative retry
     config.MaxFileContentHashSizeMb = 5;     
-}, logger);
+}, logger, new DefaultAzureCredential());
 
 // ✅ Test/development configuration
 builder.Configuration.AddJsonBlob(config => 
@@ -266,5 +276,5 @@ builder.Configuration.AddJsonBlob(config =>
     config.DebounceDelay = TimeSpan.Zero;                   // Disabled debouncing
     config.WatchingInterval = TimeSpan.FromSeconds(1);      // Fast polling
     config.ErrorRetryDelay = TimeSpan.FromSeconds(1);       // Quick retry
-}, logger);
+}, logger, new DefaultAzureCredential());
 ```
