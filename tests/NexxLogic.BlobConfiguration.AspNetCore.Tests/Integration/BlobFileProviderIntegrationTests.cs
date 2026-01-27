@@ -261,27 +261,39 @@ public class BlobFileProviderIntegrationTests
         var options = CreateOptionsWithContentBasedStrategy();
         var provider = CreateBlobFileProvider(options);
         var exceptions = new ConcurrentBag<Exception>();
+        var operationsCompleted = new CountdownEvent(50);
 
-        // Act - Perform concurrent operations
+        // Act - Perform concurrent operations without arbitrary delays
         var tasks = Enumerable.Range(0, 50).Select(i => Task.Run(() =>
         {
             try
             {
                 var token = provider.Watch($"file{i % 10}.json"); // Some overlap in file names
                 var registration = token.RegisterChangeCallback(_ => { }, null);
-                Thread.Sleep(10); // Small delay to increase concurrency
+                
+                // Use Thread.Yield() to encourage context switching instead of Sleep
+                Thread.Yield();
+                
                 registration.Dispose();
+                operationsCompleted.Signal();
             }
             catch (Exception ex)
             {
                 exceptions.Add(ex);
+                operationsCompleted.Signal();
             }
         })).ToArray();
+
+        // Wait for all operations to complete with timeout
+        var allCompleted = operationsCompleted.Wait(TimeSpan.FromSeconds(10));
 
         await Task.WhenAll(tasks);
 
         // Assert
+        Assert.True(allCompleted, "Not all concurrent operations completed within timeout");
         Assert.Empty(exceptions); // No exceptions should occur during concurrent access
+        
+        operationsCompleted.Dispose();
     }
 
     [Fact]

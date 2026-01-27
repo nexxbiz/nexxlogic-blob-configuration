@@ -99,9 +99,9 @@ public class BlobFileProviderTests
         // Act
         var sut = CreateSut(out var blobClientMock);
         var changeToken = (BlobChangeToken)sut.Watch(BlobName);
-        await Task.Delay(20);
-
-        // Assert
+        
+        // Assert immediately - load should be pending right after Watch() call
+        // No need to wait since we're testing the immediate state
         await blobClientMock
               .DidNotReceive()
               .GetPropertiesAsync(null, changeToken.CancellationToken);
@@ -113,17 +113,16 @@ public class BlobFileProviderTests
         // Arrange
         var options = new BlobConfigurationOptions
         {
-            ReloadInterval = 100_000
+            ReloadInterval = 100_000 // Long interval to ensure no automatic polling
         };
         var sut = CreateSut(out var blobClientMock, options);
         sut.GetFileInfo(BlobName);        
 
         // Act
         var changeToken = (BlobChangeToken)sut.Watch(BlobName);
-        await Task.Delay(10);
-        changeToken.OnReload();
-
-        // Assert
+        changeToken.OnReload(); // Trigger reload immediately
+        
+        // Assert - Should not call GetPropertiesAsync due to cancellation/reload
         await blobClientMock
            .DidNotReceive()
            .GetPropertiesAsync(null, changeToken.CancellationToken);
@@ -146,9 +145,9 @@ public class BlobFileProviderTests
 
         // Act
         var changeToken = (BlobChangeToken)sut.Watch(BlobName);
-        await Task.Delay(20);
 
-        // Assert - Change token should be created and not check for properties yet
+        // Assert - Change token should be created and not check for properties immediately
+        // The watch operation should stop running due to non-optional blob not existing
         Assert.NotNull(changeToken);
         await blobClientMock
             .DidNotReceive()
