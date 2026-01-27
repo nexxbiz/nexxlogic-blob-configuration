@@ -9,7 +9,6 @@ using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
 using NSubstitute;
-using NSubstitute.Core;
 using NSubstitute.ExceptionExtensions;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Tests.FileProvider;
@@ -196,13 +195,9 @@ public class BlobFileProviderTests
         
         // Wait for the signal with a generous timeout for CI environments
         var completedTask = await Task.WhenAny(multipleCallsSignal.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        
+        // Assert - The signal completing proves that Exists() was called multiple times
         Assert.Same(multipleCallsSignal.Task, completedTask);
-
-        // Assert
-        var existCalls = blobClientMock.ReceivedCalls()
-            .Where(x => x.GetMethodInfo().Name == nameof(BlobClient.Exists));
-        var enumerable = existCalls as ICall[] ?? existCalls.ToArray();
-        Assert.True(enumerable.Length > 1);
     }
 
     [Fact]
@@ -463,8 +458,7 @@ public class BlobFileProviderTests
             // This ensures existing tests continue to work with legacy BlobChangeToken
         };
 
-        var loggerFactory = new NullLoggerFactory();
-        var logger = loggerFactory.CreateLogger<BlobFileProvider>();
+        var logger = NullLogger<BlobFileProvider>.Instance;
         var blobServiceClientFactoryMock = Substitute.For<IBlobServiceClientFactory>();
         
         // Configure mock to return null for legacy mode (no ConnectionString or BlobContainerUrl)
