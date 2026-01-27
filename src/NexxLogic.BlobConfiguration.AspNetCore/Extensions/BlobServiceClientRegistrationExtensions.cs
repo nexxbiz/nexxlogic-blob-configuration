@@ -96,7 +96,10 @@ public static class BlobServiceClientRegistrationExtensions
         this IServiceCollection services,
         Func<IServiceProvider, TokenCredential> credentialFactory)
     {
+        // Register the factory itself for consumers that need custom logic
         services.AddSingleton(credentialFactory);
+        // Register a TokenCredential instance produced by the factory for BlobServiceClientFactory and others
+        services.AddSingleton<TokenCredential>(sp => credentialFactory(sp));
         services.AddSingleton<IBlobServiceClientFactory, BlobServiceClientFactory>();
         return services;
     }
