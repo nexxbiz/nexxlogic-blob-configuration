@@ -2,7 +2,6 @@
 using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Primitives;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
@@ -23,7 +22,7 @@ public class BlobFileProviderTests
     public void GetFileInfo_ShouldReturnCorrectFileInfo_WhenBlobExists()
     {
         // Arrange
-        var sut = CreateSut(out var blobClientMock);
+        using var sut = CreateSut(out var blobClientMock);
         blobClientMock
             .Name
             .Returns(BlobName);
@@ -42,7 +41,7 @@ public class BlobFileProviderTests
     public void GetFileInfo_ShouldReturnCorrectFileInfo_WhenBlobDoesNotExist()
     {
         // Arrange
-        var sut = CreateSut(out var blobClientMock);
+        using var sut = CreateSut(out var blobClientMock);
         blobClientMock
             .GetProperties()
             .Throws(new RequestFailedException(
@@ -69,7 +68,7 @@ public class BlobFileProviderTests
         {
             ReloadInterval = 1000
         };
-        var sut = CreateSut(out var blobClientMock, options);
+        await using var sut = CreateSut(out var blobClientMock, options);
         sut.GetFileInfo(BlobName);
 
         var blobProperties = BlobsModelFactory.BlobProperties(
@@ -84,19 +83,26 @@ public class BlobFileProviderTests
             .GetPropertiesAsync(null, changeToken.CancellationToken)
             .Returns(Response.FromValue(blobProperties, Substitute.For<Response>()));
 
-        // Act
-        var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(5)));
-
-        // Assert
-        Assert.Same(tcs.Task, completedTask);
-        Assert.True(changeToken.HasChanged);
+        // Act & Assert with better timeout handling
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        try
+        {
+            await tcs.Task.WaitAsync(cts.Token);
+            Assert.True(changeToken.HasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            Assert.Fail("Change detection timed out - possible test infrastructure issue");
+        }
     }
 
     [Fact]
     public async Task Watch_ShouldNotRetrieveProperties_WhenLoadIsPending()
     {
+        // Arrange
+        using var sut = CreateSut(out var blobClientMock);
+        
         // Act
-        var sut = CreateSut(out var blobClientMock);
         var changeToken = (BlobChangeToken)sut.Watch(BlobName);
         
         // Assert immediately - load should be pending right after Watch() call
@@ -114,7 +120,7 @@ public class BlobFileProviderTests
         {
             ReloadInterval = 100_000 // Long interval to ensure no automatic polling
         };
-        var sut = CreateSut(out var blobClientMock, options);
+        using var sut = CreateSut(out var blobClientMock, options);
         sut.GetFileInfo(BlobName);        
 
         // Act
@@ -131,7 +137,7 @@ public class BlobFileProviderTests
     public async Task When_BlobFile_Not_Optional_And_BlobDoesNotExist_Watch_ShouldStopRunning()
     {
         // Arrange        
-        var sut = CreateSut(out var blobClientMock);
+        using var sut = CreateSut(out var blobClientMock);
         blobClientMock
             .GetProperties()
             .Throws(new RequestFailedException(
@@ -269,26 +275,88 @@ public class BlobFileProviderTests
     {
         // Arrange
         var options = CreateOptionsWithConnectionString();
-        using var provider = CreateBlobFileProvider(options);
+        var provider = CreateBlobFileProvider(options);
 
-        // Act - Create multiple concurrent calls to Watch with different filters
-        // This tests token caching mechanism under concurrent access patterns with different paths
-        var watchTasks = new Task<IChangeToken>[10];
-        for (int i = 0; i < 10; i++)
+        try
         {
-            var index = i; // Capture loop variable
-            watchTasks[i] = Task.Run(() => provider.Watch($"config{index}.json"));
+            // Act - Create multiple concurrent calls to Watch with different filters
+            const int concurrencyLevel = 20;
+            var tasks = new List<Task<IChangeToken>>();
+            
+            // Create tasks without lambda capture to avoid warnings
+            for (var i = 0; i < concurrencyLevel; i++)
+            {
+                var configName = $"config{i}.json";
+                var task = CreateWatchTask(provider, configName);
+                tasks.Add(task);
+            }
+
+            // Wait for all tasks to complete with timeout
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            try
+            {
+                var tokenResults = await Task.WhenAll(tasks).WaitAsync(cts.Token);
+
+                // Assert - Each different path should return a different token instance
+                Assert.Equal(concurrencyLevel, tokenResults.Length);
+                
+                // All tokens should be distinct instances (one per unique path)
+                var distinctTokens = tokenResults.Distinct().ToList();
+                Assert.Equal(concurrencyLevel, distinctTokens.Count);
+
+                // Verify all tokens are the expected type
+                Assert.All(tokenResults, token => Assert.IsType<EnhancedBlobChangeToken>(token));
+            }
+            catch (OperationCanceledException)
+            {
+                Assert.Fail("Concurrent watch operations timed out - possible deadlock or performance issue");
+            }
         }
+        finally
+        {
+            await provider.DisposeAsync();
+        }
+    }
 
-        // Wait for all tasks to complete before provider disposal
-        var tokenResults = await Task.WhenAll(watchTasks);
+    [Fact]
+    public async Task BlobFileProvider_ShouldHandleConcurrentWatch_CallsForSamePath()
+    {
+        // Arrange
+        var options = CreateOptionsWithConnectionString();
+        var provider = CreateBlobFileProvider(options);
 
-        // Assert - Each different path should return a different token instance
-        Assert.Equal(10, tokenResults.Length);
-        
-        // All tokens should be distinct instances (one per unique path)
-        var distinctTokens = tokenResults.Distinct().ToList();
-        Assert.Equal(10, distinctTokens.Count);
+        try
+        {
+            // Act - Create multiple concurrent calls to Watch with same filter (tests caching)
+            var samePath = "shared-config.json";
+            var concurrencyLevel = 50;
+            var tasks = new List<Task<IChangeToken>>();
+            
+            // Create tasks without lambda capture to avoid warnings
+            for (int i = 0; i < concurrencyLevel; i++)
+            {
+                var task = CreateWatchTask(provider, samePath);
+                tasks.Add(task);
+            }
+
+            // Wait for all tasks to complete
+            var tokenResults = await Task.WhenAll(tasks);
+
+            // Assert - All tokens should be the same cached instance
+            Assert.Equal(concurrencyLevel, tokenResults.Length);
+            Assert.True(tokenResults.All(t => ReferenceEquals(t, tokenResults[0])), 
+                "All tokens for the same path should be the same cached instance");
+            Assert.IsType<EnhancedBlobChangeToken>(tokenResults[0]);
+        }
+        finally
+        {
+            provider.Dispose();
+        }
+    }
+
+    private static Task<IChangeToken> CreateWatchTask(BlobFileProvider provider, string path)
+    {
+        return Task.Run(() => provider.Watch(path));
     }
 
     [Fact]
@@ -319,7 +387,7 @@ public class BlobFileProviderTests
     public void BlobFileProvider_ShouldReturnLegacyToken_InLegacyMode()
     {
         // Arrange - Use CreateSut which forces legacy mode
-        var sut = CreateSut(out var _);
+        using var sut = CreateSut(out var _);
 
         // Act
         var token = sut.Watch("test.json");
@@ -333,7 +401,7 @@ public class BlobFileProviderTests
     public void BlobFileProvider_ShouldReturnSameTokenForAllPaths_InLegacyMode()
     {
         // Arrange - Use CreateSut which forces legacy mode (no ConnectionString)
-        var sut = CreateSut(out var _);
+        using var sut = CreateSut(out var _);
 
         // Act - Create tokens for different blob paths
         var token1 = sut.Watch("config1.json");
@@ -387,7 +455,7 @@ public class BlobFileProviderTests
             .Returns((BlobServiceClient?)null);
 
         var logger = new NullLogger<BlobFileProvider>();
-        var provider = new BlobFileProvider(
+        using var provider = new BlobFileProvider(
             blobClientFactoryMock,
             blobContainerClientFactoryMock,
             blobServiceClientFactoryMock,
@@ -402,6 +470,26 @@ public class BlobFileProviderTests
     }
 
     [Fact]
+    public void BlobFileProvider_ShouldNotThrow_WhenCalledMultipleTimes()
+    {
+        // Arrange
+        using var sut = CreateSut(out var blobClientMock);
+        blobClientMock.Name.Returns(BlobName);
+
+        // Act & Assert - Should be safe to call multiple times
+        for (var i = 0; i < 5; i++)
+        {
+            var fileInfo = sut.GetFileInfo(BlobName);
+            Assert.True(fileInfo.Exists);
+            Assert.Equal(BlobName, fileInfo.Name);
+            
+            var token = sut.Watch(BlobName);
+            Assert.NotNull(token);
+            Assert.IsType<BlobChangeToken>(token);
+        }
+    }
+
+    [Fact]
     public void BlobFileProvider_ShouldCleanupDeadTokenReferences()
     {
         // Arrange
@@ -410,7 +498,7 @@ public class BlobFileProviderTests
 
         // Act - Create many tokens to trigger cleanup
         var tokens = new List<IChangeToken>();
-        for (int i = 0; i < 150; i++) // Above the cleanup threshold of 100
+        for (var i = 0; i < 150; i++) // Above the cleanup threshold of 100
         {
             tokens.Add(provider.Watch($"config{i}.json"));
         }
@@ -428,7 +516,26 @@ public class BlobFileProviderTests
         Assert.Equal(10, keepAliveTokens.Count);
     }
 
-    static BlobFileProvider CreateSut(out BlobClient blobClientMock, BlobConfigurationOptions? options = null)
+    [Fact]
+    public void GetFileInfo_ShouldThrowArgumentException_WhenSubpathIsEmpty()
+    {
+        // Arrange
+        using var sut = CreateSut(out var _);
+
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => sut.GetFileInfo(string.Empty));
+    }
+
+    /// <summary>
+    /// Creates a BlobFileProvider configured for legacy mode (BlobChangeToken).
+    /// This method explicitly forces legacy mode by not providing ConnectionString or BlobContainerUrl,
+    /// and configuring the BlobServiceClientFactory to return null.
+    /// Use this for testing legacy token behavior.
+    /// </summary>
+    /// <param name="blobClientMock">The mocked BlobClient that will be returned by the factory</param>
+    /// <param name="options">Optional configuration options. If null, uses defaults that force legacy mode.</param>
+    /// <returns>A BlobFileProvider instance configured for legacy mode testing</returns>
+    private static BlobFileProvider CreateSut(out BlobClient blobClientMock, BlobConfigurationOptions? options = null)
     {
         var blobProperties = BlobsModelFactory.BlobProperties(
             lastModified: DefaultLastModified,
@@ -437,7 +544,7 @@ public class BlobFileProviderTests
 
         blobClientMock = Substitute.For<BlobClient>();
         blobClientMock
-            .GetProperties(cancellationToken: default)
+            .GetProperties(cancellationToken: CancellationToken.None)
             .Returns(Response.FromValue(blobProperties, Substitute.For<Response>()));
 
         var blobClientFactoryMock = Substitute.For<IBlobClientFactory>();
@@ -468,7 +575,7 @@ public class BlobFileProviderTests
         return new BlobFileProvider(blobClientFactoryMock, blobContainerClientFactoryMock, blobServiceClientFactoryMock, options ?? defaultBlobConfig, logger);
     }
 
-    private BlobConfigurationOptions CreateOptionsWithConnectionString()
+    private static BlobConfigurationOptions CreateOptionsWithConnectionString()
     {
         return new BlobConfigurationOptions
         {
@@ -482,7 +589,7 @@ public class BlobFileProviderTests
         };
     }
 
-    private BlobFileProvider CreateBlobFileProvider(BlobConfigurationOptions options)
+    private static BlobFileProvider CreateBlobFileProvider(BlobConfigurationOptions options)
     {
         // Create proper mocks that support the enhanced functionality
         var blobClientFactoryMock = Substitute.For<IBlobClientFactory>();

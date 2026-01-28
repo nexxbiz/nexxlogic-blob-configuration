@@ -117,6 +117,16 @@ public class BlobServiceClientFactory(
             return (false, "Neither ConnectionString nor BlobContainerUrl is configured");
         }
 
+        if (!string.IsNullOrEmpty(config.ConnectionString))
+        {
+            // Validate connection string format and required components
+            var connectionStringValidation = ValidateConnectionString(config.ConnectionString);
+            if (!connectionStringValidation.IsValid)
+            {
+                return connectionStringValidation;
+            }
+        }
+
         if (!string.IsNullOrEmpty(config.BlobContainerUrl))
         {
             if (!Uri.TryCreate(config.BlobContainerUrl, UriKind.Absolute, out var uri))
@@ -127,6 +137,14 @@ public class BlobServiceClientFactory(
             if (!uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
             {
                 return (false, "BlobContainerUrl must use HTTPS");
+            }
+
+            // Validate that the URL has proper components for Azure Blob Storage
+            if (string.IsNullOrEmpty(uri.Host) ||
+                !uri.Host.Contains('.') ||
+                uri.Host.Split('.').Count(x => !string.IsNullOrWhiteSpace(x)) < 2)
+            {
+                return (false, "BlobContainerUrl must have a valid hostname (e.g., 'storageaccount.blob.core.windows.net')");
             }
 
             // Check if URL contains SAS token (fallback scenario)
@@ -143,6 +161,43 @@ public class BlobServiceClientFactory(
         }
 
         return (true, null);
+    }
+
+    private static (bool IsValid, string? Reason) ValidateConnectionString(string connectionString)
+    {
+        try
+        {
+            var keyValuePairs = connectionString.Split(';', StringSplitOptions.RemoveEmptyEntries)
+                .Select(part => part.Split('=', 2))
+                .Where(kvp => kvp.Length == 2)
+                .ToDictionary(kvp => kvp[0].Trim(), kvp => kvp[1].Trim(), StringComparer.OrdinalIgnoreCase);
+
+            // Check for required AccountName
+            if (!keyValuePairs.TryGetValue("AccountName", out var accountName) || string.IsNullOrWhiteSpace(accountName))
+            {
+                return (false, "ConnectionString must contain a valid AccountName");
+            }
+
+            // Check for required AccountKey (if not using other auth methods)
+            if (keyValuePairs.TryGetValue("AccountKey", out var accountKey))
+            {
+                if (string.IsNullOrWhiteSpace(accountKey))
+                {
+                    return (false, "ConnectionString AccountKey cannot be empty");
+                }
+            }
+            else if (!keyValuePairs.ContainsKey("SharedAccessSignature") && !keyValuePairs.ContainsKey("DefaultEndpointsProtocol"))
+            {
+                // If no AccountKey and no SAS, this might be an incomplete connection string
+                return (false, "ConnectionString must contain either AccountKey or SharedAccessSignature");
+            }
+
+            return (true, null);
+        }
+        catch (Exception)
+        {
+            return (false, "ConnectionString format is invalid");
+        }
     }
 
     private static bool IsConfigurationError(Exception ex)

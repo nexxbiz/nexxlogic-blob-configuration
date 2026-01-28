@@ -12,7 +12,14 @@ public class BlobContainerClientFactory(
     {
         if (!string.IsNullOrWhiteSpace(blobConfig.BlobContainerUrl))
         {
-            var containerUri = new Uri(blobConfig.BlobContainerUrl);
+            // Validate that BlobContainerUrl is a valid HTTP/HTTPS URI
+            if (!Uri.TryCreate(blobConfig.BlobContainerUrl, UriKind.Absolute, out var containerUri) ||
+                (containerUri.Scheme != Uri.UriSchemeHttp && containerUri.Scheme != Uri.UriSchemeHttps))
+            {
+                throw new ArgumentException(
+                    $"BlobContainerUrl must be a valid HTTP or HTTPS URI. Provided value: '{blobConfig.BlobContainerUrl}'",
+                    nameof(blobConfig.BlobContainerUrl));
+            }
             
             // Check if URL contains actual SAS token (not just any query parameters)
             if (SasTokenDetector.HasSasToken(containerUri))
@@ -39,6 +46,11 @@ public class BlobContainerClientFactory(
         if (string.IsNullOrWhiteSpace(blobConfig.ConnectionString))
         {
             throw new InvalidOperationException("Either BlobContainerUrl or ConnectionString must be provided");
+        }
+
+        if (string.IsNullOrWhiteSpace(blobConfig.ContainerName))
+        {
+            throw new InvalidOperationException("ContainerName must be provided when using ConnectionString");
         }
         
         var serviceClient = new BlobServiceClient(blobConfig.ConnectionString);
