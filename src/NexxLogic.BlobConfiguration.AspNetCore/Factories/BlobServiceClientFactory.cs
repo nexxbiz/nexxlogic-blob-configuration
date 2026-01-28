@@ -186,9 +186,9 @@ public class BlobServiceClientFactory(
                     return (false, "ConnectionString AccountKey cannot be empty");
                 }
             }
-            else if (!keyValuePairs.ContainsKey("SharedAccessSignature") && !keyValuePairs.ContainsKey("DefaultEndpointsProtocol"))
+            else if (!keyValuePairs.ContainsKey("SharedAccessSignature"))
             {
-                // If no AccountKey and no SAS, this might be an incomplete connection string
+                // If no AccountKey and no SAS, this is an incomplete connection string for authentication purposes
                 return (false, "ConnectionString must contain either AccountKey or SharedAccessSignature");
             }
 
