@@ -12,12 +12,12 @@ public class BlobContainerClientFactory(
     {
         if (!string.IsNullOrWhiteSpace(blobConfig.BlobContainerUrl))
         {
-            // Validate that BlobContainerUrl is a valid HTTP/HTTPS URI
+            // Validate that BlobContainerUrl is a valid HTTPS URI
             if (!Uri.TryCreate(blobConfig.BlobContainerUrl, UriKind.Absolute, out var containerUri) ||
-                (containerUri.Scheme != Uri.UriSchemeHttp && containerUri.Scheme != Uri.UriSchemeHttps))
+                containerUri.Scheme != Uri.UriSchemeHttps)
             {
                 throw new ArgumentException(
-                    $"BlobContainerUrl must be a valid HTTP or HTTPS URI. Provided value: '{blobConfig.BlobContainerUrl}'",
+                    $"BlobContainerUrl must be a valid HTTPS URI. Provided value: '{blobConfig.BlobContainerUrl}'",
                     nameof(blobConfig.BlobContainerUrl));
             }
             
