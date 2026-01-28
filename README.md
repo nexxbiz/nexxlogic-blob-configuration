@@ -109,9 +109,6 @@ builder.Configuration.AddJsonBlob(config =>
     // Container URL with non-SAS query params - uses TokenCredential (Enhanced Mode) 
     config.BlobContainerUrl = "https://mystorageaccount.blob.core.windows.net/config?timeout=30&api-version=2021-06-08";
     config.BlobName = "appsettings.json";
-    
-    // OR blob-level SAS - uses anonymous access (Legacy Mode)
-    config.BlobUrl = "https://mystorageaccount.blob.core.windows.net/config/appsettings.json?sv=2021-06-08&sig=ABC123&se=...";
 }, logger, new DefaultAzureCredential());
 ```
 
