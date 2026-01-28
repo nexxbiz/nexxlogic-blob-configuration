@@ -89,7 +89,8 @@ public class BlobConfigurationBuilderExtensionsTests
                 config.BlobName = TestBlobName;
             }), 
             "ConnectionString"
-        ];}
+        ];
+    }
 
     private static Action<BlobConfigurationOptions> GetValidConfiguration() =>
         config =>
