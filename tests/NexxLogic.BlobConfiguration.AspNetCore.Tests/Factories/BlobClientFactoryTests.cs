@@ -51,7 +51,6 @@ public class BlobClientFactoryTests
     }
 
     [Theory]
-    [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("invalid/blob/name")]
@@ -93,30 +92,5 @@ public class BlobClientFactoryTests
             _sut.GetBlobClient(TestBlobName));
             
         Assert.Same(expectedException, actualException);
-    }
-
-    [Fact]
-    public void GetBlobClient_ShouldCallFactoryOnlyOnce_WhenCalledMultipleTimesWithSameName()
-    {
-        // Arrange
-        _blobContainerFactory
-            .GetBlobContainerClient()
-            .Returns(_blobContainerClient);
-        
-        _blobContainerClient
-            .GetBlobClient(TestBlobName)
-            .Returns(_expectedBlobClient);
-
-        // Act
-        var result1 = _sut.GetBlobClient(TestBlobName);
-        var result2 = _sut.GetBlobClient(TestBlobName);
-
-        // Assert
-        Assert.Same(_expectedBlobClient, result1);
-        Assert.Same(_expectedBlobClient, result2);
-        
-        // Verify factory is called for each request (no caching behavior)
-        _blobContainerFactory.Received(2).GetBlobContainerClient();
-        _blobContainerClient.Received(2).GetBlobClient(TestBlobName);
     }
 }

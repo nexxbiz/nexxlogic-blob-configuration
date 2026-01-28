@@ -100,7 +100,7 @@ public class BlobFileProviderTests
     public async Task Watch_ShouldNotRetrieveProperties_WhenLoadIsPending()
     {
         // Arrange
-        using var sut = CreateSut(out var blobClientMock);
+        await using var sut = CreateSut(out var blobClientMock);
         
         // Act
         var changeToken = (BlobChangeToken)sut.Watch(BlobName);
@@ -120,7 +120,7 @@ public class BlobFileProviderTests
         {
             ReloadInterval = 100_000 // Long interval to ensure no automatic polling
         };
-        using var sut = CreateSut(out var blobClientMock, options);
+        await using var sut = CreateSut(out var blobClientMock, options);
         sut.GetFileInfo(BlobName);        
 
         // Act
@@ -137,7 +137,7 @@ public class BlobFileProviderTests
     public async Task When_BlobFile_Not_Optional_And_BlobDoesNotExist_Watch_ShouldStopRunning()
     {
         // Arrange        
-        using var sut = CreateSut(out var blobClientMock);
+        await using var sut = CreateSut(out var blobClientMock);
         blobClientMock
             .GetProperties()
             .Throws(new RequestFailedException(
@@ -328,12 +328,12 @@ public class BlobFileProviderTests
         try
         {
             // Act - Create multiple concurrent calls to Watch with same filter (tests caching)
-            var samePath = "shared-config.json";
-            var concurrencyLevel = 50;
+            const string samePath = "shared-config.json";
+            const int concurrencyLevel = 50;
             var tasks = new List<Task<IChangeToken>>();
             
             // Create tasks without lambda capture to avoid warnings
-            for (int i = 0; i < concurrencyLevel; i++)
+            for (var i = 0; i < concurrencyLevel; i++)
             {
                 var task = CreateWatchTask(provider, samePath);
                 tasks.Add(task);
@@ -350,7 +350,7 @@ public class BlobFileProviderTests
         }
         finally
         {
-            provider.Dispose();
+            await provider.DisposeAsync();
         }
     }
 

@@ -3,6 +3,7 @@ using Azure.Identity;
 using Azure.Storage.Blobs;
 using Microsoft.Extensions.Logging;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
+using NexxLogic.BlobConfiguration.AspNetCore.Utilities;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Factories;
 
@@ -148,7 +149,7 @@ public class BlobServiceClientFactory(
             }
 
             // Check if URL contains SAS token (fallback scenario)
-            if (uri.Query.Contains("sv=") || uri.Query.Contains("sig="))
+            if (SasTokenDetector.HasSasToken(uri))
             {
                 return (false, "BlobContainerUrl contains SAS token - SAS tokens provide container-level access, but enhanced features need storage account-level access");
             }
