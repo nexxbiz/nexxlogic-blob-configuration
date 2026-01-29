@@ -175,12 +175,12 @@ internal class EnhancedBlobChangeToken : IChangeToken, IAsyncDisposable
         lock (_lock)
         {
             if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0) return; // Double-check after acquiring lock
-            
-            // Create new debounce timer first to avoid race condition window
-            //Timer? newTimer = null;
 
-            using var newTimer = new Timer(_ =>
+            var newTimer = new Timer(_ =>
             {
+                // Mark as changed before executing callbacks
+                _hasChanged = true;
+                
                 try
                 {
                     // Check disposal state
@@ -190,7 +190,6 @@ internal class EnhancedBlobChangeToken : IChangeToken, IAsyncDisposable
                     }
 
                     // Execute the change notification
-                    _hasChanged = true;
                     NotifyCallbacks();
                     _logger.LogInformation("Debounced change notification triggered for blob {BlobPath} after {Delay}s delay",
                         _blobPath, _debounceDelay.TotalSeconds);

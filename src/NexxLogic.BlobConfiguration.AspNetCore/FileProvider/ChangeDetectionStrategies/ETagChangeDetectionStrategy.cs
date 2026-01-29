@@ -5,8 +5,15 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStr
 /// <summary>
 /// ETag-based change detection strategy (fast, metadata-based)
 /// </summary>
-public class ETagChangeDetectionStrategy(ILogger logger) : IChangeDetectionStrategy
+public class ETagChangeDetectionStrategy() : IChangeDetectionStrategy
 {
+    private readonly ILogger? _logger;
+    
+    public ETagChangeDetectionStrategy(ILogger logger) : this()
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+    
     public Task<bool> HasChangedAsync(ChangeDetectionContext context)
     {
         try
@@ -18,7 +25,7 @@ public class ETagChangeDetectionStrategy(ILogger logger) : IChangeDetectionStrat
             if (currentETag != previousETag)
             {
                 context.BlobFingerprints[etagKey] = currentETag;
-                logger.LogInformation("ETag change detected for blob {BlobPath}. ETag changed from {OldETag} to {NewETag}",
+                _logger.LogInformation("ETag change detected for blob {BlobPath}. ETag changed from {OldETag} to {NewETag}",
                     context.BlobPath, previousETag ?? "null", currentETag);
                 return Task.FromResult(true);
             }
@@ -27,7 +34,7 @@ public class ETagChangeDetectionStrategy(ILogger logger) : IChangeDetectionStrat
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Failed to check ETag changes for blob {BlobPath}", context.BlobPath);
+            _logger.LogWarning(ex, "Failed to check ETag changes for blob {BlobPath}", context.BlobPath);
             return Task.FromResult(false);
         }
     }

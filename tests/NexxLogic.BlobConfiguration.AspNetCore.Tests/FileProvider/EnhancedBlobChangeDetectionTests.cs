@@ -169,7 +169,7 @@ public class EnhancedBlobChangeDetectionTests
             provider.Watch(BlobName);
             provider.Watch("other.json");
             
-            var exception = Record.Exception(() => provider.Dispose());
+            var exception = Record.Exception(() => provider.DisposeAsync());
             Assert.Null(exception);
             
             Assert.Throws<ObjectDisposedException>(() => provider.Watch("test.json"));

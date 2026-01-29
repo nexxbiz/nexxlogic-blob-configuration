@@ -54,7 +54,7 @@ public static class ConfigurationBuilderExtensions
         Action<BlobConfigurationOptions> configure,
         ILogger<BlobFileProvider> logger)
     {
-        var credential = CreateCredentialFromEnvironment();
+        var credential = CreateCredentialFromEnvironment(logger);
         return builder.AddJsonBlob(configure, logger, credential);
     }
 
@@ -67,20 +67,21 @@ public static class ConfigurationBuilderExtensions
         ILogger<BlobFileProvider> logger,
         IConfiguration configuration)
     {
-        var credential = CreateCredentialFromConfiguration(configuration);
+        var credential = CreateCredentialFromConfiguration(configuration, logger);
         return builder.AddJsonBlob(configure, logger, credential);
     }
 
-    private static TokenCredential CreateCredentialFromEnvironment()
+    private static TokenCredential CreateCredentialFromEnvironment(ILogger? logger = null)
     {
         var clientId = Environment.GetEnvironmentVariable("AZURE_CLIENT_ID");
         var clientSecret = Environment.GetEnvironmentVariable("AZURE_CLIENT_SECRET");
         var tenantId = Environment.GetEnvironmentVariable("AZURE_TENANT_ID");
 
         // Service Principal authentication
-        if (!string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(clientSecret) && !string.IsNullOrEmpty(tenantId))
+        var tokenCredential = TryCreateClientSecretCredential(logger, clientId, clientSecret, tenantId);
+        if (tokenCredential != null)
         {
-            return new ClientSecretCredential(tenantId, clientId, clientSecret);
+            return tokenCredential;
         }
 
         // Managed Identity with specific client ID
@@ -93,7 +94,7 @@ public static class ConfigurationBuilderExtensions
         return new DefaultAzureCredential();
     }
 
-    private static TokenCredential CreateCredentialFromConfiguration(IConfiguration configuration)
+    private static TokenCredential CreateCredentialFromConfiguration(IConfiguration configuration, ILogger? logger = null)
     {
         var azureSection = configuration.GetSection("Azure");
         var clientId = azureSection["ClientId"];
@@ -101,9 +102,10 @@ public static class ConfigurationBuilderExtensions
         var tenantId = azureSection["TenantId"];
 
         // Service Principal from configuration
-        if (!string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(clientSecret) && !string.IsNullOrEmpty(tenantId))
+        var tokenCredential = TryCreateClientSecretCredential(logger, clientId, clientSecret, tenantId);
+        if (tokenCredential != null)
         {
-            return new ClientSecretCredential(tenantId, clientId, clientSecret);
+            return tokenCredential;
         }
 
         // Managed Identity with client ID from configuration
@@ -136,5 +138,29 @@ public static class ConfigurationBuilderExtensions
 
         // Default fallback
         return new DefaultAzureCredential();
+    }
+
+    private static TokenCredential? TryCreateClientSecretCredential(ILogger? logger, string? clientId, string? clientSecret,
+        string? tenantId)
+    {
+        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret) ||
+            string.IsNullOrEmpty(tenantId))
+        {
+            return null;
+        }
+        
+        logger?.LogDebug("Creating ClientSecretCredential for tenant {TenantId} with client ID {ClientId}", 
+            tenantId, clientId);
+        
+        try
+        {
+            return new ClientSecretCredential(tenantId, clientId, clientSecret);
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Failed to create ClientSecretCredential, falling back to next option");
+        }
+
+        return null;
     }
 }

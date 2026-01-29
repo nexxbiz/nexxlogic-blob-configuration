@@ -208,7 +208,7 @@ public class BlobFileProviderIntegrationTests
         Assert.All(createdTokens, token => Assert.NotNull(token));
 
         // Act & Assert
-        var exception = Record.Exception(() => provider.Dispose());
+        var exception = Record.Exception(() => provider.DisposeAsync());
         Assert.Null(exception);
         
         // Verify provider is properly disposed
@@ -216,17 +216,17 @@ public class BlobFileProviderIntegrationTests
     }
 
     [Fact]
-    public void BlobFileProvider_ShouldHandleDoubleDisposal_Gracefully()
+    public async Task BlobFileProvider_ShouldHandleDoubleDisposal_Gracefully()
     {
         // Arrange
         var options = CreateOptionsWithContentBasedStrategy();
         var provider = CreateBlobFileProvider(options);
 
         // Act & Assert
-        var exception = Record.Exception(() =>
+        var exception = await Record.ExceptionAsync(async () =>
         {
-            provider.Dispose();
-            provider.Dispose(); // Second disposal should be safe
+            await provider.DisposeAsync();
+            await provider.DisposeAsync(); // Second disposal should be safe
         });
         Assert.Null(exception);
     }

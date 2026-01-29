@@ -34,7 +34,7 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 /// 
 /// If authentication fails, the provider falls back to legacy mode with reduced functionality.
 /// </summary>
-public class BlobFileProvider : IFileProvider, IDisposable, IAsyncDisposable
+public class BlobFileProvider : IFileProvider, IAsyncDisposable
 {
     private const int MaxTokenCacheBeforeCleanup = 100;
     private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(5); // Periodic cleanup every 5 minutes
@@ -227,54 +227,39 @@ public class BlobFileProvider : IFileProvider, IDisposable, IAsyncDisposable
             throw new ObjectDisposedException(nameof(BlobFileProvider));
         }
 
-        // Use enhanced change token if available, otherwise fall back to legacy implementation
         if (_blobServiceClient != null)
         {
             var blobPath = GetBlobPath(filter);
-
-            // Use GetOrAdd with factory function to atomically get existing or create new weak reference
-            var weakRef = _tokenCache.GetOrAdd(blobPath, _ => CreateTokenWeakReference(blobPath, filter));
-
-            // Check if the weak reference still has a live target
-            if (weakRef.TryGetTarget(out var existingToken))
-            {
-                _logger.LogDebug("Reusing existing enhanced watch token for filter: {Filter}", filter);
-                return existingToken;
-            }
-
-            // If the weak reference is dead, atomically update the cache and get the resulting weak reference.
-            // AddOrUpdate ensures we see the latest value for the key and avoid racy TryUpdate logic.
-            weakRef = _tokenCache.AddOrUpdate(
+        
+            // Atomic operation to get or create token
+            var token = _tokenCache.AddOrUpdate(
                 blobPath,
+                // Factory for new entry
                 _ => CreateTokenWeakReference(blobPath, filter),
-                (_, current) =>
+                // Update function for existing entry
+                (_, existingWeakRef) =>
                 {
-                    // If the current weak reference still has a live target, keep using it.
-                    if (current.TryGetTarget(out EnhancedBlobChangeToken _))
+                    // Try to get existing live token
+                    if (existingWeakRef.TryGetTarget(out var _))
                     {
-                        return current;
+                        _logger.LogDebug("Reusing existing enhanced watch token for filter: {Filter}", filter);
+                        return existingWeakRef; // Keep existing
                     }
-
-                    // Otherwise, create a new weak reference and token.
+                
+                    // Create new token if old one was GC'd
+                    _logger.LogDebug("Previous token was garbage collected, creating new one for filter: {Filter}", filter);
                     return CreateTokenWeakReference(blobPath, filter);
-                });
-
-            // Try to get the token from the (possibly updated) weak reference.
-            if (weakRef.TryGetTarget(out var newToken))
-            {
-                // Threshold-based cleanup as a backstop for high-churn scenarios
-                if (_tokenCache.Count > MaxTokenCacheBeforeCleanup)
-                {
-                    CleanupDeadReferences("threshold reached");
                 }
+            );
 
-                return newToken;
+            // Extract the actual token (this should always succeed)
+            if (token.TryGetTarget(out var result))
+            {
+                return result;
             }
 
-            // This should not happen; create a new token directly without attempting further cache recovery.
-            _logger.LogWarning(
-                "Failed to get token from weak reference; creating new token directly for filter: {Filter}",
-                filter);
+            // Fallback: create new token if somehow the reference is dead
+            _logger.LogWarning("WeakReference immediately dead, creating fallback token for filter: {Filter}", filter);
             return CreateEnhancedToken(blobPath, filter);
         }
 
@@ -294,6 +279,7 @@ public class BlobFileProvider : IFileProvider, IDisposable, IAsyncDisposable
         var token = CreateEnhancedToken(blobPath, filter);
         return new WeakReference<EnhancedBlobChangeToken>(token);
     }
+
 
     private EnhancedBlobChangeToken CreateEnhancedToken(string blobPath, string filter)
     {
@@ -377,7 +363,7 @@ public class BlobFileProvider : IFileProvider, IDisposable, IAsyncDisposable
             }
             catch (Exception ex)
             {
-                _logger.LogError($"error occured {ex.Message}");
+                _logger.LogError("error occured {ExMessage}", ex.Message);
                 // If an exception is not caught, then it will stop the watch loop. This will retry at the next interval.
                 // Additional error handling can be implemented in the future, like:
                 // - Max retries
@@ -439,22 +425,6 @@ public class BlobFileProvider : IFileProvider, IDisposable, IAsyncDisposable
             _logger.LogDebug("Cleaned up {Count} dead token references (trigger: {Reason})", 
                 keysToRemove.Count, reason);
         }
-    }
-
-    public void Dispose()
-    {
-        // Delegate to async disposal and block
-        // This is not ideal but necessary for IDisposable compatibility
-        try
-        {
-            DisposeAsync().AsTask().GetAwaiter().GetResult();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error during synchronous disposal of BlobFileProvider");
-        }
-        
-        GC.SuppressFinalize(this);
     }
 
     public async ValueTask DisposeAsync()

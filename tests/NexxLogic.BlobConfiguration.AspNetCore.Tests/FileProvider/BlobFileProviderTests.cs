@@ -19,10 +19,10 @@ public class BlobFileProviderTests
     private static readonly DateTimeOffset DefaultLastModified = new(2022, 12, 19, 1, 1, 1, default);      
 
     [Fact]
-    public void GetFileInfo_ShouldReturnCorrectFileInfo_WhenBlobExists()
+    public async Task GetFileInfo_ShouldReturnCorrectFileInfo_WhenBlobExists()
     {
         // Arrange
-        using var sut = CreateSut(out var blobClientMock);
+        await using var sut = CreateSut(out var blobClientMock);
         blobClientMock
             .Name
             .Returns(BlobName);
@@ -38,10 +38,10 @@ public class BlobFileProviderTests
     }
 
     [Fact]
-    public void GetFileInfo_ShouldReturnCorrectFileInfo_WhenBlobDoesNotExist()
+    public async Task GetFileInfo_ShouldReturnCorrectFileInfo_WhenBlobDoesNotExist()
     {
         // Arrange
-        using var sut = CreateSut(out var blobClientMock);
+        await using var sut = CreateSut(out var blobClientMock);
         blobClientMock
             .GetProperties()
             .Throws(new RequestFailedException(
@@ -360,11 +360,11 @@ public class BlobFileProviderTests
     }
 
     [Fact]
-    public void BlobFileProvider_ShouldCreateEnhancedTokens_WhenConnectionStringProvided()
+    public async Task BlobFileProvider_ShouldCreateEnhancedTokens_WhenConnectionStringProvided()
     {
         // Arrange - Use enhanced provider setup that should create enhanced tokens
         var options = CreateOptionsWithConnectionString();
-        using var provider = CreateBlobFileProvider(options);
+        await using var provider = CreateBlobFileProvider(options);
 
         // Act
         var token = provider.Watch("test.json");
@@ -384,10 +384,10 @@ public class BlobFileProviderTests
     }
 
     [Fact]
-    public void BlobFileProvider_ShouldReturnLegacyToken_InLegacyMode()
+    public async Task BlobFileProvider_ShouldReturnLegacyToken_InLegacyMode()
     {
         // Arrange - Use CreateSut which forces legacy mode
-        using var sut = CreateSut(out var _);
+        await using var sut = CreateSut(out var _);
 
         // Act
         var token = sut.Watch("test.json");
@@ -398,10 +398,10 @@ public class BlobFileProviderTests
     }
 
     [Fact]
-    public void BlobFileProvider_ShouldReturnSameTokenForAllPaths_InLegacyMode()
+    public async Task BlobFileProvider_ShouldReturnSameTokenForAllPaths_InLegacyMode()
     {
         // Arrange - Use CreateSut which forces legacy mode (no ConnectionString)
-        using var sut = CreateSut(out var _);
+        await using var sut = CreateSut(out var _);
 
         // Act - Create tokens for different blob paths
         var token1 = sut.Watch("config1.json");
@@ -418,11 +418,11 @@ public class BlobFileProviderTests
     }
 
     [Fact]
-    public void BlobFileProvider_ShouldCacheTokensPerPath_InEnhancedMode()
+    public async Task BlobFileProvider_ShouldCacheTokensPerPath_InEnhancedMode()
     {
         // Arrange - Use enhanced provider setup
         var options = CreateOptionsWithConnectionString();
-        using var provider = CreateBlobFileProvider(options);
+        await using var provider = CreateBlobFileProvider(options);
 
         // Act - Create tokens for different blob paths
         var token1A = provider.Watch("config1.json");
@@ -442,7 +442,7 @@ public class BlobFileProviderTests
     }
 
     [Fact]
-    public void BlobFileProvider_ShouldFallbackToLegacy_WhenServiceClientCreationFails()
+    public async Task BlobFileProvider_ShouldFallbackToLegacy_WhenServiceClientCreationFails()
     {
         // Arrange - Create provider that will fail to create BlobServiceClient
         var options = CreateOptionsWithConnectionString();
@@ -455,7 +455,7 @@ public class BlobFileProviderTests
             .Returns((BlobServiceClient?)null);
 
         var logger = new NullLogger<BlobFileProvider>();
-        using var provider = new BlobFileProvider(
+        await using var provider = new BlobFileProvider(
             blobClientFactoryMock,
             blobContainerClientFactoryMock,
             blobServiceClientFactoryMock,
@@ -470,10 +470,10 @@ public class BlobFileProviderTests
     }
 
     [Fact]
-    public void BlobFileProvider_ShouldNotThrow_WhenCalledMultipleTimes()
+    public async Task BlobFileProvider_ShouldNotThrow_WhenCalledMultipleTimes()
     {
         // Arrange
-        using var sut = CreateSut(out var blobClientMock);
+        await using var sut = CreateSut(out var blobClientMock);
         blobClientMock.Name.Returns(BlobName);
 
         // Act & Assert - Should be safe to call multiple times
@@ -490,11 +490,11 @@ public class BlobFileProviderTests
     }
 
     [Fact]
-    public void BlobFileProvider_ShouldCleanupDeadTokenReferences()
+    public async Task BlobFileProvider_ShouldCleanupDeadTokenReferences()
     {
         // Arrange
         var options = CreateOptionsWithConnectionString();
-        using var provider = CreateBlobFileProvider(options);
+        await using var provider = CreateBlobFileProvider(options);
 
         // Act - Create many tokens to trigger cleanup
         var tokens = new List<IChangeToken>();
@@ -517,10 +517,10 @@ public class BlobFileProviderTests
     }
 
     [Fact]
-    public void GetFileInfo_ShouldThrowArgumentException_WhenSubpathIsEmpty()
+    public async Task GetFileInfo_ShouldThrowArgumentException_WhenSubpathIsEmpty()
     {
         // Arrange
-        using var sut = CreateSut(out var _);
+        await using var sut = CreateSut(out var _);
 
         // Act & Assert
         Assert.Throws<ArgumentException>(() => sut.GetFileInfo(string.Empty));

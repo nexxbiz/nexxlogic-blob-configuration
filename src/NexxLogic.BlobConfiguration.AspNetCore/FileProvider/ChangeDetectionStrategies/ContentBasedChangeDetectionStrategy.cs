@@ -6,8 +6,15 @@ namespace NexxLogic.BlobConfiguration.AspNetCore.FileProvider.ChangeDetectionStr
 /// <summary>
 /// Content-based change detection strategy using SHA256 hashing (accurate, content-based)
 /// </summary>
-public class ContentBasedChangeDetectionStrategy(ILogger logger) : IChangeDetectionStrategy
+public class ContentBasedChangeDetectionStrategy() : IChangeDetectionStrategy
 {
+    private readonly ILogger? _logger;
+    
+    public ContentBasedChangeDetectionStrategy(ILogger logger) : this()
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+    
     public async Task<bool> HasChangedAsync(ChangeDetectionContext context)
     {
         try
@@ -29,7 +36,7 @@ public class ContentBasedChangeDetectionStrategy(ILogger logger) : IChangeDetect
 
                 var newHashDisplay = HashDisplay(currentHash);
 
-                logger.LogInformation("Content change detected for blob {BlobPath}. Hash changed from {OldHash} to {NewHash}",
+                _logger.LogInformation("Content change detected for blob {BlobPath}. Hash changed from {OldHash} to {NewHash}",
                     context.BlobPath, oldHashDisplay, newHashDisplay);
                 return true;
             }
@@ -38,7 +45,7 @@ public class ContentBasedChangeDetectionStrategy(ILogger logger) : IChangeDetect
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Failed to check content changes for blob {BlobPath}", context.BlobPath);
+            _logger.LogWarning(ex, "Failed to check content changes for blob {BlobPath}", context.BlobPath);
             return false;
         }
     }

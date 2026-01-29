@@ -12,11 +12,13 @@ internal class SizeLimitedChangeDetectionDecorator(
     ILogger logger)
     : IChangeDetectionStrategy
 {
+    private readonly ILogger _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    
     public async Task<bool> HasChangedAsync(ChangeDetectionContext context)
     {
         if (context.Properties.ContentLength > maxSizeMb * 1024 * 1024)
         {
-            logger.LogDebug("Blob {BlobPath} too large ({Size} bytes) for primary strategy, using fallback strategy", 
+            _logger.LogDebug("Blob {BlobPath} too large ({Size} bytes) for primary strategy, using fallback strategy", 
                 context.BlobPath, context.Properties.ContentLength);
             
             return await fallbackStrategy.HasChangedAsync(context);
