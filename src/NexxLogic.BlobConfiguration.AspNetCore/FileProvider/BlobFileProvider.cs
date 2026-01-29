@@ -96,7 +96,7 @@ public class BlobFileProvider : IFileProvider, IDisposable, IAsyncDisposable
         _cleanupTimer = new Timer(
             callback: _ => PeriodicCleanup(),
             state: null,
-            dueTime: CleanupInterval,
+            dueTime: TimeSpan.Zero,
             period: CleanupInterval);
         
         // Use the factory to create BlobServiceClient with exception handling

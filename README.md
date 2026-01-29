@@ -144,13 +144,13 @@ graph TD
 ```csharp
 // Production: Managed Identity
 builder.Configuration.AddJsonBlob(config => { 
-    config.AccountName = "prodstorageaccount";
+    config.BlobContainerUrl = "prodstorageaccount.blob.core.windows.net/{containerName}";
     // ...
 }, logger, new ManagedIdentityCredential());
 
 // Development: Environment-based
 builder.Configuration.AddJsonBlobWithEnvironmentCredentials(config => {
-    config.AccountName = "devstorageaccount"; 
+    config.BlobContainerUrl = "devstorageaccount.blob.core.windows.net/{containerName}"; 
     // ...
 }, logger);
 ```
@@ -177,7 +177,7 @@ config.ConnectionString = "DefaultEndpointsProtocol=https;AccountName=...;Accoun
 // Enable Managed Identity in portal, then:
 builder.Configuration.AddJsonBlob(config => 
 {
-    config.AccountName = "mystorageaccount";
+    config.BlobContainerUrl = "mystorageaccount.blob.core.windows.net/{containerName}";
     config.ContainerName = "configuration";
     config.BlobName = "appsettings.json";
 }, logger, new ManagedIdentityCredential());
@@ -189,7 +189,7 @@ builder.Configuration.AddJsonBlob(config =>
 builder.Configuration.AddJsonBlobWithEnvironmentCredentials(config => 
 {
     // Environment variables set by Azure infrastructure
-    config.AccountName = Environment.GetEnvironmentVariable("STORAGE_ACCOUNT_NAME");
+    config.BlobContainerUrl = builder.Configuration["BlobStorage:ContainerUrl"];
     config.ContainerName = "configuration";
     config.BlobName = "appsettings.json"; 
 }, logger);
@@ -200,7 +200,7 @@ builder.Configuration.AddJsonBlobWithEnvironmentCredentials(config =>
 // Uses Azure CLI, Visual Studio, or environment variables automatically:
 builder.Configuration.AddJsonBlobWithEnvironmentCredentials(config => 
 {
-    config.AccountName = "devstorageaccount";
+    config.BlobContainerUrl = "devstorageaccount.blob.core.windows.net/{containerName}?{sasToken}";
     config.ContainerName = "configuration";
     config.BlobName = "appsettings.json";
 }, logger);
@@ -215,7 +215,7 @@ builder.Configuration.AddJsonBlobWithEnvironmentCredentials(config =>
 
 builder.Configuration.AddJsonBlobWithEnvironmentCredentials(config => 
 {
-    config.AccountName = "storageaccount";
+    config.BlobContainerUrl = "storageaccount.blob.core.windows.net/{containerName}?{sasToken}";
     config.ContainerName = "configuration";
     config.BlobName = "appsettings.json";
 }, logger);

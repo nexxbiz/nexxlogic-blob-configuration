@@ -44,7 +44,7 @@ public class SasTokenDetectorTests
     }
 
     [Fact]
-    public void HasSasToken_ShouldReturnFalse_ForIncompleSasToken()
+    public void HasSasToken_ShouldReturnFalse_ForIncompleteSasToken()
     {
         // Arrange - missing required 'sig' parameter
         const string incompleteSasUrl = "https://mystorageaccount.blob.core.windows.net/container?sv=2021-06-08&se=2023-12-31T23:59:59Z&sp=r";

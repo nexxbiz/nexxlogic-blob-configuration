@@ -37,7 +37,10 @@ internal class EnhancedBlobChangeToken : IChangeToken, IAsyncDisposable
     private readonly Task _watchingTask;
     private Timer? _debounceTimer;
     private volatile bool _hasChanged;
-    private int _disposed; // 0 = false, 1 = true (used with Interlocked for thread-safety)
+    
+    // 0 = false, 1 = true (used with Interlocked for thread-safety)
+    private int _disposed;
+    
     private readonly object _lock = new object();
     private readonly Dictionary<Guid, (Action<object?> callback, object? state)> _callbacks = new();
 
@@ -174,47 +177,37 @@ internal class EnhancedBlobChangeToken : IChangeToken, IAsyncDisposable
             if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0) return; // Double-check after acquiring lock
             
             // Create new debounce timer first to avoid race condition window
-            Timer? newTimer = null;
-            try
-            {
-                newTimer = new Timer(_ =>
-                {
-                    try
-                    {
-                        // Check disposal state
-                        if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0)
-                        {
-                            return;
-                        }
+            //Timer? newTimer = null;
 
-                        // Execute the change notification
-                        _hasChanged = true;
-                        NotifyCallbacks();
-                        _logger.LogInformation("Debounced change notification triggered for blob {BlobPath} after {Delay}s delay",
-                            _blobPath, _debounceDelay.TotalSeconds);
-                    }
-                    catch (Exception ex)
-                    {
-                        // Only log errors if we're not disposed
-                        if (Interlocked.CompareExchange(ref _disposed, 0, 0) == 0)
-                        {
-                            _logger.LogError(ex, "Error executing debounced change callback for blob {BlobPath}", _blobPath);
-                        }
-                    }
-                }, null, _debounceDelay, Timeout.InfiniteTimeSpan);
-                
-                // Atomically replace and dispose old timer after creating new one
-                var oldTimer = Interlocked.Exchange(ref _debounceTimer, newTimer);
-                oldTimer?.Dispose();
-                
-                // Clear the local reference since it's now managed by the field
-                newTimer = null;
-            }
-            finally
+            using var newTimer = new Timer(_ =>
             {
-                // If an exception occurred during timer creation, dispose the local timer
-                newTimer?.Dispose();
-            }
+                try
+                {
+                    // Check disposal state
+                    if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0)
+                    {
+                        return;
+                    }
+
+                    // Execute the change notification
+                    _hasChanged = true;
+                    NotifyCallbacks();
+                    _logger.LogInformation("Debounced change notification triggered for blob {BlobPath} after {Delay}s delay",
+                        _blobPath, _debounceDelay.TotalSeconds);
+                }
+                catch (Exception ex)
+                {
+                    // Only log errors if we're not disposed
+                    if (Interlocked.CompareExchange(ref _disposed, 0, 0) == 0)
+                    {
+                        _logger.LogError(ex, "Error executing debounced change callback for blob {BlobPath}", _blobPath);
+                    }
+                }
+            }, null, _debounceDelay, Timeout.InfiniteTimeSpan);
+            
+            // Atomically replace and dispose old timer after creating new one
+            var oldTimer = Interlocked.Exchange(ref _debounceTimer, newTimer);
+            oldTimer?.Dispose();
             
             _logger.LogDebug("Change detected for blob {BlobPath}, starting {Delay}s debounce timer",
                 _blobPath, _debounceDelay.TotalSeconds);
@@ -252,14 +245,20 @@ internal class EnhancedBlobChangeToken : IChangeToken, IAsyncDisposable
 
     public IDisposable RegisterChangeCallback(Action<object?> callback, object? state)
     {
-        if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0) throw new ObjectDisposedException(nameof(EnhancedBlobChangeToken));
+        if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0)
+        {
+            throw new ObjectDisposedException(nameof(EnhancedBlobChangeToken));
+        }
 
         bool invokeImmediately;
         Guid callbackId;
 
         lock (_lock)
         {
-            if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0) throw new ObjectDisposedException(nameof(EnhancedBlobChangeToken));
+            if (Interlocked.CompareExchange(ref _disposed, 0, 0) != 0)
+            {
+                throw new ObjectDisposedException(nameof(EnhancedBlobChangeToken));
+            }
             invokeImmediately = _hasChanged;
 
             callbackId = Guid.NewGuid();
