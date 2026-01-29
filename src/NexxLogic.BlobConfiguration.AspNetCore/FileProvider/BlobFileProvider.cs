@@ -172,6 +172,7 @@ public class BlobFileProvider : IFileProvider, IDisposable, IAsyncDisposable
 
     public IFileInfo GetFileInfo(string subpath)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subpath);
         var blobClient = _blobClientFactory.GetBlobClient(subpath);
         var result = new BlobFileInfo(blobClient);
 
