@@ -1,29 +1,39 @@
-﻿using FluentValidation;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NexxLogic.BlobConfiguration.AspNetCore.Factories;
 using NexxLogic.BlobConfiguration.AspNetCore.FileProvider;
 using NexxLogic.BlobConfiguration.AspNetCore.Options;
+using Azure.Core;
+using Azure.Identity;
 
 namespace NexxLogic.BlobConfiguration.AspNetCore.Extensions;
 
 public static class ConfigurationBuilderExtensions
 {
+    /// <summary>
+    /// Adds JSON blob configuration with a specific TokenCredential.
+    /// </summary>
     public static IConfigurationBuilder AddJsonBlob(this IConfigurationBuilder builder, 
         Action<BlobConfigurationOptions> configure,
-        ILogger<BlobFileProvider> logger)
+        ILogger<BlobFileProvider> logger,
+        TokenCredential? credential = null)
     {
         var options = new BlobConfigurationOptions();
-        configure.Invoke(options);
-        new RequiredBlobNameBlobConfigurationOptionsValidator().ValidateAndThrow(options);
-        var blobContainerClientFactory = new BlobContainerClientFactory(options);
+        configure(options);
+        RequiredBlobNameBlobConfigurationOptionsValidator.ValidateAndThrow(options);
+        
+        var blobServiceClientLogger = new NullLogger<BlobServiceClientFactory>();
+        var blobServiceClientFactory = new BlobServiceClientFactory(blobServiceClientLogger, credential);
+        var blobContainerClientFactory = new BlobContainerClientFactory(options, blobServiceClientFactory);
         var blobClientFactory = new BlobClientFactory(blobContainerClientFactory);
 
         return builder.AddJsonFile(source =>
         {
             source.FileProvider = new BlobFileProvider(
                 blobClientFactory,
-                blobContainerClientFactory, 
+                blobContainerClientFactory,
+                blobServiceClientFactory,
                 options, 
                 logger
             );
@@ -33,43 +43,124 @@ public static class ConfigurationBuilderExtensions
         });
     }
 
-    public static IConfigurationBuilder AddAllJsonBlobsInContainer(this IConfigurationBuilder builder,
+    /// <summary>
+    /// Adds JSON blob configuration with credentials configured from environment or configuration.
+    /// Supports environment-based credential selection:
+    /// - AZURE_CLIENT_ID + AZURE_CLIENT_SECRET + AZURE_TENANT_ID = ClientSecretCredential
+    /// - AZURE_CLIENT_ID only = ManagedIdentityCredential with client ID
+    /// - Neither = DefaultAzureCredential (fallback to multiple sources)
+    /// </summary>
+    public static IConfigurationBuilder AddJsonBlobWithEnvironmentCredentials(this IConfigurationBuilder builder,
         Action<BlobConfigurationOptions> configure,
         ILogger<BlobFileProvider> logger)
     {
-        var options = new BlobConfigurationOptions();
-        configure.Invoke(options);
-        new BlobConfigurationOptionsValidator().ValidateAndThrow(options);
+        var credential = CreateCredentialFromEnvironment(logger);
+        return builder.AddJsonBlob(configure, logger, credential);
+    }
 
-        var blobContainerClientFactory = new BlobContainerClientFactory(options);
-        var blobClientFactory = new BlobClientFactory(blobContainerClientFactory);
-        var provider = new BlobFileProvider(blobClientFactory, blobContainerClientFactory, options, logger);
+    /// <summary>
+    /// Adds JSON blob configuration with credentials from IConfiguration.
+    /// Looks for Azure credential settings in configuration under "Azure" section.
+    /// </summary>
+    public static IConfigurationBuilder AddJsonBlobWithConfiguredCredentials(this IConfigurationBuilder builder,
+        Action<BlobConfigurationOptions> configure,
+        ILogger<BlobFileProvider> logger,
+        IConfiguration configuration)
+    {
+        var credential = CreateCredentialFromConfiguration(configuration, logger);
+        return builder.AddJsonBlob(configure, logger, credential);
+    }
 
-        foreach (var blobInfo in provider.GetDirectoryContents(""))
+    private static TokenCredential CreateCredentialFromEnvironment(ILogger? logger = null)
+    {
+        var clientId = Environment.GetEnvironmentVariable("AZURE_CLIENT_ID");
+        var clientSecret = Environment.GetEnvironmentVariable("AZURE_CLIENT_SECRET");
+        var tenantId = Environment.GetEnvironmentVariable("AZURE_TENANT_ID");
+
+        // Service Principal authentication
+        var tokenCredential = TryCreateClientSecretCredential(logger, clientId, clientSecret, tenantId);
+        if (tokenCredential != null)
         {
-            builder.AddJsonFile(source =>
-            {
-                var blobOptionsConfiguration = new BlobConfigurationOptions
-                {
-                    BlobName = blobInfo.Name,
-                    ConnectionString = options.ConnectionString,
-                    ContainerName = options.ContainerName,
-                    Optional = options.Optional,
-                    ReloadInterval = options.ReloadInterval,
-                    ReloadOnChange = options.ReloadOnChange,
-                };
-
-                source.FileProvider = new BlobFileProvider(
-                    blobClientFactory,
-                    blobContainerClientFactory, 
-                    blobOptionsConfiguration,
-                    logger
-                );
-                source.Optional = blobOptionsConfiguration.Optional;
-                source.ReloadOnChange = blobOptionsConfiguration.ReloadOnChange;
-                source.Path = blobOptionsConfiguration.BlobName;
-            });
+            return tokenCredential;
         }
-        return builder;
+
+        // Managed Identity with specific client ID
+        if (!string.IsNullOrEmpty(clientId) && string.IsNullOrEmpty(clientSecret))
+        {
+            return new ManagedIdentityCredential(clientId);
+        }
+
+        // Default fallback - tries multiple credential sources
+        return new DefaultAzureCredential();
+    }
+
+    private static TokenCredential CreateCredentialFromConfiguration(IConfiguration configuration, ILogger? logger = null)
+    {
+        var azureSection = configuration.GetSection("Azure");
+        var clientId = azureSection["ClientId"];
+        var clientSecret = azureSection["ClientSecret"];
+        var tenantId = azureSection["TenantId"];
+
+        // Service Principal from configuration
+        var tokenCredential = TryCreateClientSecretCredential(logger, clientId, clientSecret, tenantId);
+        if (tokenCredential != null)
+        {
+            return tokenCredential;
+        }
+
+        // Managed Identity with client ID from configuration
+        if (!string.IsNullOrEmpty(clientId))
+        {
+            return new ManagedIdentityCredential(clientId);
+        }
+
+        // Check for chained credential configuration
+        var credentialChain = azureSection.GetSection("CredentialChain").GetChildren()
+            .Select(section => section.Value)
+            .Where(value => !string.IsNullOrEmpty(value))
+            .ToArray();
+        if (credentialChain.Length > 0)
+        {
+            var credentials = new List<TokenCredential>();
+            foreach (var credType in credentialChain)
+            {
+                credentials.Add((credType?.ToLowerInvariant()) switch
+                {
+                    "managedidentity" => new ManagedIdentityCredential(),
+                    "azurecli" => new AzureCliCredential(),
+                    "visualstudio" => new VisualStudioCredential(),
+                    "visualstudiocode" => new VisualStudioCodeCredential(),
+                    _ => throw new InvalidOperationException($"Unsupported credential type: {credType ?? "null"}")
+                });
+            }
+            return new ChainedTokenCredential(credentials.ToArray());
+        }
+
+        // Default fallback
+        return new DefaultAzureCredential();
+    }
+
+    private static TokenCredential? TryCreateClientSecretCredential(ILogger? logger, string? clientId, string? clientSecret,
+        string? tenantId)
+    {
+        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret) ||
+            string.IsNullOrEmpty(tenantId))
+        {
+            return null;
+        }
+        
+        logger?.LogDebug("Creating ClientSecretCredential for tenant {TenantId} with client ID {ClientId}", 
+            tenantId, clientId);
+        
+        try
+        {
+            return new ClientSecretCredential(tenantId, clientId, clientSecret);
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Failed to create ClientSecretCredential, falling back to next option");
+        }
+
+        return null;
     }
 }
